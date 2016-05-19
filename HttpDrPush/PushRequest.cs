@@ -15,10 +15,8 @@ namespace HttpDrPush
         private byte smsStatusCode = 0;
         private long smsStatusTime = 0;
         private string senderName = string.Empty;
-        private decimal cost = 0;
+        private float cost = 0;
         private byte attemptsMade = 0;
-        private Direction direction = Direction.OUTBOUND;
-
         public void ReEnQueue()
         {
             System.Data.SqlClient.SqlConnection sqlCon = null;
@@ -55,7 +53,7 @@ namespace HttpDrPush
         public byte SmsStatusCode { get { return smsStatusCode; } set { smsStatusCode = value; } }
         public long SmsStatusTime { get { return smsStatusTime; } set { smsStatusTime = value; } }
         public string SenderName { get { return senderName; } set { senderName = value; } }
-        public decimal Cost { get { return cost; } set { cost = value; } }
+        public float Cost { get { return cost; } set { cost = value; } }
         public byte AttemptsMade { get { return attemptsMade; } set { attemptsMade = value; } }
         #endregion
     }

@@ -6,10 +6,10 @@ using System.Threading.Tasks;
 
 namespace HttpDrPush
 {
-    class OutboundConfig
+    public class OutboundConfig
     {
         private string url = null;
-        private byte httpMethod = 1;
+        private HttpMethod httpMethod = HttpMethod.POST;
         private byte maxFailedAttempts = 0;
         private short retryDelayInSeconds = 20;
         private byte retryStrategy = 1;
@@ -26,10 +26,12 @@ namespace HttpDrPush
         private Dictionary<string, string> requestHeaders = null;
         private DataFormat dataFormat = DataFormat.JSON;
         private string rootElementName = "Message";
+        private bool isSmsPropertiesAsAttributes = true;
+        private bool isSmsObjectAsArray = false;
 
         #region "PROPERTIES"
         public string Url { get { return url; } set { url = value; } }
-        public byte HttpMethod { get { return httpMethod; } set { httpMethod = value; } }
+        public HttpMethod HttpMethod { get { return httpMethod; } set { httpMethod = value; } }
         public byte MaxFailedAttempts { get { return maxFailedAttempts; } set { maxFailedAttempts = value; } }
         public short RetryDelayInSeconds { get { return retryDelayInSeconds; } set { retryDelayInSeconds = value; } }
         public byte RetryStrategy { get { return retryStrategy; } set { retryStrategy = value; } }
@@ -46,6 +48,8 @@ namespace HttpDrPush
         public Dictionary<string, string> RequestHeaders { get { return requestHeaders; } set { requestHeaders = value; } }
         public DataFormat DataFormat { get { return dataFormat; } set { dataFormat = value; } }
         public string RootElementName { get { return rootElementName; } set { rootElementName = value; } }
+        public bool IsSmsPropertiesAsAttributes { get { return true; } set { isSmsPropertiesAsAttributes = value; } }
+        public bool IsSmsObjectAsArray { get { return isSmsObjectAsArray; } set { isSmsObjectAsArray = value; } }
         #endregion
     }
 }

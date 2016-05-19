@@ -11,9 +11,12 @@ namespace HttpDrPush
     {
         private static ILog logger = null;
         private static bool hasStopSignal = false;
+        private static bool isServiceCleaned = true;
         private static Dictionary<long, AccountProcessor> activeAccountProcessors = new Dictionary<long, AccountProcessor>();
         private static System.Threading.Mutex activeAccountsMutex = new System.Threading.Mutex();
         private static string connectionString = null;
+        private static int houseKeepingThreadSleepTime = 60;
+        private static int maxInactivity = 60;
         public static void InitiaLizeLogger()
         {
             GlobalContext.Properties["LogName"] = DateTime.Now.ToString("yyyyMMdd");
@@ -80,7 +83,7 @@ namespace HttpDrPush
             }
             catch (Exception ex)
             {
-                SharedClass.logger.Error((object)("Error While Chcecking ActiveAccountMap, Reason : " + ex.ToString()));
+                SharedClass.logger.Error("Error While Chcecking ActiveAccountMap, Reason : " + ex.ToString());
             }
             finally
             {
@@ -88,14 +91,35 @@ namespace HttpDrPush
             }
             return flag;
         }
+        public static void GetAccountProcessor(long accountId, out AccountProcessor accountProcessor)
+        {
+            while (!activeAccountsMutex.WaitOne())
+                System.Threading.Thread.Sleep(10);
+            activeAccountProcessors.TryGetValue(accountId, out accountProcessor);
+        }
 
         public static long CurrentTimeStamp()
         {
             return Convert.ToInt64((DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds);
         }
         public static ILog Logger { get { return logger == null ? log4net.LogManager.GetLogger("") : logger; } }
+        public static bool IsServiceCleaned { get { return isServiceCleaned; } set { isServiceCleaned = value; } }
         public static bool HasStopSignal { get { return hasStopSignal; } set { hasStopSignal = value; } }
-        public static Dictionary<long, AccountProcessor> ActiveAccountProcessors { get { return SharedClass.activeAccountProcessors; } }
+        //public static Dictionary<long, AccountProcessor> ActiveAccountProcessors { get { return SharedClass.activeAccountProcessors; } }
+        public static int ActiveAccountProcessorsCount
+        {
+            get
+            {
+                int count = 0;
+                while (!activeAccountsMutex.WaitOne())
+                    System.Threading.Thread.Sleep(10);
+                count = activeAccountProcessors.Count();
+                activeAccountsMutex.ReleaseMutex();
+                return count;
+            }
+        }
         public static string ConnectionString { get { return connectionString == null ? System.Configuration.ConfigurationManager.ConnectionStrings["ConnectionString"].ConnectionString : connectionString; } }
+        public static int HouseKeepingThreadSleepTime { get { return houseKeepingThreadSleepTime; } set { houseKeepingThreadSleepTime = value; } }
+        public static int MaxInactivity { get { return maxInactivity; } set { maxInactivity = value; } }
     }
 }

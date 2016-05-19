@@ -14,6 +14,7 @@ namespace HttpDrPush
     public enum DataFormat
     { 
         JSON = 1,
-        XML = 2
+        XML = 2,
+        PLAIN = 3
     }
 }

@@ -6,12 +6,8 @@ using System.Threading.Tasks;
 
 namespace HttpDrPush
 {
-    //public static class Direction
-    //{
-        
-    //}
     public enum Direction
-    { 
+    {
         INBOUND = 1,
         OUTBOUND = 2
     }

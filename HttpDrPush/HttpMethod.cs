@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 
 namespace HttpDrPush
 {
-    public static class HttpMethod
+    public enum HttpMethod
     {
-        public const short POST = 1;
-        public const short GET = 2;
+        POST = 1,
+        GET = 2
     }
 }
