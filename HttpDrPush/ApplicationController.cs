@@ -20,23 +20,33 @@ namespace HttpDrPush
         public void Start()
         {
             SharedClass.IsServiceCleaned = false;
+            this.DeserializePendingRequests();
             System.Threading.Thread pollThread = new System.Threading.Thread(new System.Threading.ThreadStart(StartDbPoll));
             pollThread.Name = "DbPoller";
             pollThread.Start();
         }
         public void Stop()
-        {
+        {   
             while (this.isIamPolling)
                 System.Threading.Thread.Sleep(100);
+            SharedClass.StopActiveAccountProcessors();
+            while (SharedClass.ActiveAccountProcessorsCount > 0)
+            {
+                System.Threading.Thread.Sleep(1000);
+                SharedClass.Logger.Info("Still " + SharedClass.ActiveAccountProcessorsCount.ToString() + " AccountProcessors are active");
+            }
+            SharedClass.SerializePendingQueue();
+            SharedClass.IsServiceCleaned = true;
         }
         private void StartDbPoll()
         {
             SharedClass.Logger.Info("Started");
             SqlConnection sqlCon = new SqlConnection(SharedClass.ConnectionString);
-            SqlCommand sqlCmd = new SqlCommand("Get_Pending_PushRequests", sqlCon);
+            SqlCommand sqlCmd = new SqlCommand("DR_Get_PendingPushRequests", sqlCon);
+            sqlCmd.CommandType = CommandType.StoredProcedure;
             SqlDataAdapter da = null;
             DataSet ds = null;
-            long accountId = 0;
+            int accountId = 0;
             Direction direction = Direction.OUTBOUND;
             while (!SharedClass.HasStopSignal)
             {
@@ -45,7 +55,7 @@ namespace HttpDrPush
                     isIamPolling = true;
                     sqlCmd.Parameters.Clear();
                     sqlCmd.Parameters.Add("@LastId", SqlDbType.BigInt).Value = this.lastDrId;
-                    da = new SqlDataAdapter();
+                    da = new SqlDataAdapter(sqlCmd);                    
                     da.Fill(ds = new DataSet());
                     if (ds.Tables.Count > 0)
                     {
@@ -55,8 +65,9 @@ namespace HttpDrPush
                             PushRequest pushRequest = new PushRequest();
                             foreach (DataRow row in ds.Tables[0].Rows)
                             {
+                                this.lastDrId = Convert.ToInt32(row["Id"]);
                                 pushRequest.Id = Convert.ToInt64(row["Id"]);
-                                accountId = Convert.ToInt64(row["AccountId"]);
+                                accountId = Convert.ToInt32(row["AccountId"]);
                                 switch (Convert.ToByte(row["ServiceId"]))
                                 {
                                     case 1:
@@ -72,8 +83,8 @@ namespace HttpDrPush
                                 pushRequest.MobileNumber = row["MobileNumber"].ToString();
                                 pushRequest.UUID = row["UUID"].ToString();
                                 pushRequest.Text = row["Text"].ToString();
-                                pushRequest.SmsStatusCode = Convert.ToByte(row["SmsStatusCode"]);
-                                pushRequest.SmsStatusTime = DateTime.Parse(row["SmsStatusTime"].ToString()).ToUnixTimeStamp();
+                                pushRequest.SmsStatusCode = Convert.ToByte(row["SmsStateCode"]);
+                                pushRequest.SmsStatusTime = DateTime.Parse(row["SmsStateTime"].ToString()).ToUnixTimeStamp();
                                 pushRequest.SenderName = row["SenderName"].ToString();
                                 pushRequest.Cost = float.Parse(row["Cost"].ToString());
                                 pushRequest.AttemptsMade = Convert.ToByte(row["AttemptsMade"]);
@@ -83,6 +94,9 @@ namespace HttpDrPush
                                     accountProcessor = new AccountProcessor(accountId);
                                 }
                                 accountProcessor.EnQueue(pushRequest, direction);
+                                System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
+                                accountProcessorThread.Name = "Account_" + accountId.ToString();
+                                accountProcessorThread.Start();
                             }
                         }
                     }
@@ -98,25 +112,72 @@ namespace HttpDrPush
                 }
             }
         }
-        private void HouseKeeping()
+        //private void HouseKeeping()
+        //{
+        //    while (!SharedClass.HasStopSignal)
+        //    {   
+        //        if (SharedClass.ActiveAccountProcessorsCount > 0)
+        //        {
+        //            AccountProcessor accountProcessor = null;                    
+        //            for (int i = 0; i < SharedClass.ActiveAccountProcessorsCount; i++)
+        //            {
+        //                if (!accountProcessor.IsNecessary)
+        //                    accountProcessor.Stop();
+        //            }
+        //        }
+        //        System.Threading.Thread.Sleep(SharedClass.HouseKeepingThreadSleepTime * 1000);
+        //    }
+        //}
+        private void DeserializePendingRequests()
         {
-            while (!SharedClass.HasStopSignal)
-            {   
-                if (SharedClass.ActiveAccountProcessorsCount > 0)
+            try
+            {
+                if (System.IO.File.Exists(SharedClass.PendingQueueFileName))
                 {
-                    AccountProcessor accountProcessor = null;                    
-                    for (int i = 0; i < SharedClass.ActiveAccountProcessorsCount; i++)
+                    System.Runtime.Serialization.Formatters.Binary.BinaryFormatter formatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+                    System.IO.Stream stream = new System.IO.FileStream(SharedClass.PendingQueueFileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
+                    List<AccountPendingRequests> pendingPushRequests = null;
+                    AccountPendingRequests apr = new AccountPendingRequests();
+                    pendingPushRequests = formatter.Deserialize(stream) as List<AccountPendingRequests>;
+                    stream.Close();
+                    if (pendingPushRequests != null && pendingPushRequests.Count > 0)
                     {
-                        if (!accountProcessor.IsNecessary)
-                            accountProcessor.Stop();
+                        while (pendingPushRequests.Count > 0)
+                        {
+                            apr = pendingPushRequests.First();
+                            AccountProcessor accountProcessor = new AccountProcessor(apr.AccountId);
+                            foreach (PushRequest pushRequest in apr.OutboundRequests)
+                            {
+                                accountProcessor.EnQueue(pushRequest, Direction.OUTBOUND);
+                            }
+                            foreach (PushRequest pushRequest in apr.InboundRequests)
+                            {
+                                accountProcessor.EnQueue(pushRequest, Direction.INBOUND);
+                            }
+                            System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
+                            accountProcessorThread.Name = "Account_" + apr.AccountId.ToString();
+                            accountProcessorThread.Start();
+                            pendingPushRequests.Remove(apr);
+                        }
+                    }
+                    try
+                    {
+                        System.IO.File.Delete(SharedClass.PendingQueueFileName);
+                    }
+                    catch (Exception e)
+                    {
+                        SharedClass.Logger.Error("Error Deleting Serialized File, Reason : " + e.ToString());
                     }
                 }
-                System.Threading.Thread.Sleep(SharedClass.HouseKeepingThreadSleepTime * 1000);
+            }
+            catch (Exception e)
+            {
+                SharedClass.Logger.Error("Exception while Deserializing Queue : " + e.ToString());
             }
         }
         private void LoadConfig()
-        { 
-
+        {
+            SharedClass.InitiaLizeLogger();
         }
     }
 }

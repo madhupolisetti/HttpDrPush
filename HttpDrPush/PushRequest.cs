@@ -17,6 +17,9 @@ namespace HttpDrPush
         private string senderName = string.Empty;
         private float cost = 0;
         private byte attemptsMade = 0;
+        private int responseStatusCode = 0;
+        private int timeTaken = 0;
+        private bool isSuccess = false;
         public void ReEnQueue()
         {
             System.Data.SqlClient.SqlConnection sqlCon = null;
@@ -55,6 +58,9 @@ namespace HttpDrPush
         public string SenderName { get { return senderName; } set { senderName = value; } }
         public float Cost { get { return cost; } set { cost = value; } }
         public byte AttemptsMade { get { return attemptsMade; } set { attemptsMade = value; } }
+        public int ResponseStatusCode { get { return responseStatusCode; } set { responseStatusCode = value; } }
+        public int TimeTaken { get { return timeTaken; } set { timeTaken = value; } }
+        public bool IsSuccess { get { return isSuccess; } set { isSuccess = value; } }
         #endregion
     }
 }

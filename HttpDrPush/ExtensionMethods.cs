@@ -17,9 +17,9 @@ namespace ExtensionMethods
         {
             return input.Replace(" ", "").Replace(Environment.NewLine, "");
         }
-        public static long ToUnixTimeStamp(this DateTime input)
+        public static int ToUnixTimeStamp(this DateTime input)
         {
-            return (long)(input - new DateTime(1970, 1, 1, 0, 0, 0)).TotalSeconds;
+            return (int)(input - new DateTime(1970, 1, 1, 0, 0, 0)).TotalSeconds;
         }
     }
 }

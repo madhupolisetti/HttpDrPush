@@ -6,17 +6,20 @@ using System.Threading.Tasks;
 using log4net;
 
 namespace HttpDrPush
-{
+{   
+    [Serializable]
     public static class SharedClass
     {
         private static ILog logger = null;
         private static bool hasStopSignal = false;
         private static bool isServiceCleaned = true;
-        private static Dictionary<long, AccountProcessor> activeAccountProcessors = new Dictionary<long, AccountProcessor>();
+        private static Dictionary<int, AccountProcessor> activeAccountProcessors = new Dictionary<int, AccountProcessor>();
         private static System.Threading.Mutex activeAccountsMutex = new System.Threading.Mutex();
         private static string connectionString = null;
         private static int houseKeepingThreadSleepTime = 60;
         private static int maxInactivity = 60;
+        
+        private static List<AccountPendingRequests> pendingPushRequests = null;
         public static void InitiaLizeLogger()
         {
             GlobalContext.Properties["LogName"] = DateTime.Now.ToString("yyyyMMdd");
@@ -25,7 +28,7 @@ namespace HttpDrPush
             //SharedClass.dumpLogger = LogManager.GetLogger("DumpLogger");
             //SharedClass.heartBeatLogger = LogManager.GetLogger("HeartBeatLogger");
         }
-        public static bool AddAccountProcessor(long accountId, AccountProcessor Processor)
+        public static bool AddAccountProcessor(int accountId, AccountProcessor Processor)
         {
             bool flag = false;
             SharedClass.logger.Info((object)("Adding AccountID " + (object)accountId + " Into ActiveAccountProcessors"));
@@ -47,8 +50,7 @@ namespace HttpDrPush
             }
             return flag;
         }
-
-        public static bool ReleaseAccountProcessor(long accountId)
+        public static bool ReleaseAccountProcessor(int accountId)
         {
             bool flag = false;
             SharedClass.logger.Info((object)("Releasing AccountId " + (object)accountId + " From ActiveAccountProcessors Map"));
@@ -70,8 +72,7 @@ namespace HttpDrPush
             }
             return flag;
         }
-
-        public static bool IsAccountProcessorActive(long accountId)
+        public static bool IsAccountProcessorActive(int accountId)
         {
             bool flag = false;
             try
@@ -91,21 +92,45 @@ namespace HttpDrPush
             }
             return flag;
         }
-        public static void GetAccountProcessor(long accountId, out AccountProcessor accountProcessor)
+        public static void GetAccountProcessor(int accountId, out AccountProcessor accountProcessor)
         {
             while (!activeAccountsMutex.WaitOne())
                 System.Threading.Thread.Sleep(10);
             activeAccountProcessors.TryGetValue(accountId, out accountProcessor);
+            activeAccountsMutex.ReleaseMutex();
         }
-
+        public static void StopActiveAccountProcessors()
+        {
+            while (activeAccountProcessors.Count > 0)
+            {
+                KeyValuePair<int, AccountProcessor> accountProcessor = activeAccountProcessors.First();
+                accountProcessor.Value.Stop();
+            }
+        }
         public static long CurrentTimeStamp()
         {
             return Convert.ToInt64((DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds);
         }
+        public static void SerializePendingQueue()
+        {
+            if (pendingPushRequests != null && pendingPushRequests.Count > 0)
+            {
+                try
+                {
+                    System.Runtime.Serialization.Formatters.Binary.BinaryFormatter formatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
+                    System.IO.Stream stream = new System.IO.FileStream(PendingQueueFileName, System.IO.FileMode.Create, System.IO.FileAccess.Write, System.IO.FileShare.None);
+                    formatter.Serialize(stream, pendingPushRequests);
+                    stream.Close();
+                }
+                catch (Exception e)
+                {
+                    logger.Error("Exception while serializing Pending Queue, Reason : " + e.ToString());
+                }
+            }
+        }
         public static ILog Logger { get { return logger == null ? log4net.LogManager.GetLogger("") : logger; } }
         public static bool IsServiceCleaned { get { return isServiceCleaned; } set { isServiceCleaned = value; } }
-        public static bool HasStopSignal { get { return hasStopSignal; } set { hasStopSignal = value; } }
-        //public static Dictionary<long, AccountProcessor> ActiveAccountProcessors { get { return SharedClass.activeAccountProcessors; } }
+        public static bool HasStopSignal { get { return hasStopSignal; } set { hasStopSignal = value; } }        
         public static int ActiveAccountProcessorsCount
         {
             get
@@ -118,8 +143,18 @@ namespace HttpDrPush
                 return count;
             }
         }
+        public static void AddAccountPendingRequests(AccountPendingRequests apr)
+        {
+            if (pendingPushRequests == null)
+                pendingPushRequests = new List<AccountPendingRequests>();
+            lock (SharedClass.pendingPushRequests)
+            {
+                SharedClass.pendingPushRequests.Add(apr);
+            }
+        }
         public static string ConnectionString { get { return connectionString == null ? System.Configuration.ConfigurationManager.ConnectionStrings["ConnectionString"].ConnectionString : connectionString; } }
         public static int HouseKeepingThreadSleepTime { get { return houseKeepingThreadSleepTime; } set { houseKeepingThreadSleepTime = value; } }
         public static int MaxInactivity { get { return maxInactivity; } set { maxInactivity = value; } }
+        public static string PendingQueueFileName { get { return "PendingQueue.ser"; } }
     }
 }

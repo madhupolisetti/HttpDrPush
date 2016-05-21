@@ -45,7 +45,7 @@ namespace HttpDrPush
         public string TextParameterName { get { return textParameterName; } set { textParameterName = value; } }
         public string SenderNameParameterName { get { return senderNameParameterName; } set { senderNameParameterName = value; } }
         public string CostParameterName { get { return costParameterName; } set { costParameterName = value; } }
-        public Dictionary<string, string> RequestHeaders { get { return requestHeaders; } set { requestHeaders = value; } }
+        public Dictionary<string, string> RequestHeaders { get { return requestHeaders == null ? new Dictionary<string, string>() : requestHeaders; } set { requestHeaders = value; } }
         public DataFormat DataFormat { get { return dataFormat; } set { dataFormat = value; } }
         public string RootElementName { get { return rootElementName; } set { rootElementName = value; } }
         public bool IsSmsPropertiesAsAttributes { get { return true; } set { isSmsPropertiesAsAttributes = value; } }
