@@ -112,9 +112,8 @@ namespace HttpDrPush
             StreamWriter streamWriter = null;
             int startTime = System.DateTime.Now.ToUnixTimeStamp();
             bool isPushSuccess = false;
-            byte attemptsMade = pushRequest.AttemptsMade;
             payload = GetPayload(pushRequest);
-            while (!isPushSuccess && attemptsMade < this.accountProcessor.OutboundConfig.MaxFailedAttempts && this.shouldIRun)
+            while (!isPushSuccess && pushRequest.AttemptsMade < this.accountProcessor.OutboundConfig.MaxFailedAttempts && this.shouldIRun)
             {
                 try
                 {
@@ -162,12 +161,16 @@ namespace HttpDrPush
                 catch (WebException e)
                 {
                     pushRequest.ResponseStatusCode = GetNumericStatusCode(((HttpWebResponse)e.Response).StatusCode);
-                    ++attemptsMade;
+                    ++pushRequest.AttemptsMade;
+                    if (this.accountProcessor.OutboundConfig.RetryStrategy == 1)
+                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000);
+                    else
+                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000 * pushRequest.AttemptsMade);
                 }
                 catch (Exception e)
                 {
                     SharedClass.Logger.Error("Error Pushing PushId " + pushRequest.Id + ", Reason : " + e.ToString());
-                    ++attemptsMade;
+                    ++pushRequest.AttemptsMade;
                 }
                 finally
                 {
