@@ -89,25 +89,9 @@ namespace HttpDrPush
         public void Start()
         {   
             SharedClass.Logger.Info("Started");
-            SharedClass.AddAccountProcessor(this.accountId, this);
-            if (this.outboundPushProcessors != null && this.outboundPushProcessors.Count > 0)
-            {
-                foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
-                {
-                    Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
-                    pushThread.Name = this.accountId.ToString() + "_Push_O_" + pushProcessor.Id;
-                    pushThread.Start();
-                }
-            }
-            if (this.inboundPushProcessors != null && this.inboundPushProcessors.Count > 0)
-            {
-                foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
-                {
-                    Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
-                    pushThread.Name = this.accountId + "_Push_I_" + pushProcessor.Id;
-                    pushThread.Start();
-                }
-            }
+            this.lastProcessedTimeInbound = DateTime.Now.ToUnixTimeStamp();
+            this.lastProcessedTimeOutbound = DateTime.Now.ToUnixTimeStamp();
+            SharedClass.AddAccountProcessor(this.accountId, this);            
         }
         public void Stop()
         {   
@@ -148,9 +132,14 @@ namespace HttpDrPush
         }        
         public void EnQueue(PushRequest pushRequest, Direction direction)
         {
+            SharedClass.Logger.Info("EnQueuing PushId : " + pushRequest.Id.ToString() + ", Direction : " + direction.ToString());
             switch (direction)
             { 
                 case Direction.OUTBOUND:
+                    if (this.outboundConfig == null)
+                    {
+                        throw new InvalidOperationException("Outbound Config not set for account " + this.accountId.ToString());                        
+                    }
                     if (this.outboundPushProcessors == null || this.outboundPushProcessors.Count == 0)
                         InitPushProcessors(direction);
                     if (lastProcessorIndexOutbound >= this.outboundPushProcessors.Count)
@@ -159,6 +148,10 @@ namespace HttpDrPush
                     ++lastProcessorIndexOutbound;
                     break;
                 case Direction.INBOUND:
+                    if (this.inboundConfig == null)
+                    {
+                        throw new InvalidOperationException("Inbound Config not set for account " + this.accountId.ToString());
+                    }
                     if (this.inboundPushProcessors == null && this.inboundPushProcessors.Count == 0)
                         InitPushProcessors(direction);
                     if (lastProcessorIndexInbound >= this.inboundPushProcessors.Count)
@@ -213,6 +206,13 @@ namespace HttpDrPush
         }
         private void SetOutboundConfig(DataRow outboundConfigRecord)
         {   
+            //foreach (DataColumn column in outboundConfigRecord.Table.Columns)
+            //{
+            //    if (outboundConfigRecord[column.ColumnName].IsDBNull())
+            //        SharedClass.Logger.Info(column.ColumnName + " : NULL");
+            //    else
+            //        SharedClass.Logger.Info(column.ColumnName + " : " + outboundConfigRecord[column.ColumnName]);
+            //}
             this.outboundConfig = new OutboundConfig();
             //this.outboundPushProcessors = new List<PushProcessor>();
             this.outboundConfig.Url = outboundConfigRecord["Url"].ToString();
@@ -228,7 +228,7 @@ namespace HttpDrPush
                     break;
             }
             if (!outboundConfigRecord["MaxFailedAttempts"].IsDBNull())
-            {
+            {   
                 this.outboundConfig.MaxFailedAttempts = Convert.ToByte(outboundConfigRecord["MaxFailedAttempts"]);
             }
             if (!outboundConfigRecord["RetryDelayInSeconds"].IsDBNull())
@@ -329,6 +329,24 @@ namespace HttpDrPush
                 default:
                     break;
             }
+            if (this.outboundPushProcessors != null && this.outboundPushProcessors.Count > 0)
+            {
+                foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
+                {
+                    Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
+                    pushThread.Name = "Account_" + this.accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_O";
+                    pushThread.Start();
+                }
+            }
+            if (this.inboundPushProcessors != null && this.inboundPushProcessors.Count > 0)
+            {
+                foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
+                {
+                    Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
+                    pushThread.Name = "Account_" + this.accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_I";
+                    pushThread.Start();
+                }
+            }
         }
         #region PROPERTIES
         public int AccountId { get { return accountId; } }
@@ -341,39 +359,45 @@ namespace HttpDrPush
             get
             {
                 bool isNecessary = false;
-                foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
+                if (this.outboundPushProcessors != null && this.outboundPushProcessors.Count > 0)
                 {
-                    if (pushProcessor.QueueCount() > 0)
+                    foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
                     {
-                        isNecessary = true;
-                        break;
-                    }
-                }
-                if (!isNecessary)
-                {
-                    for (byte i = 0; i < this.outboundPushProcessors.Count; i++)
-                    {
-                        this.outboundPushProcessors[i].Stop();
-                    }
-                }
-                if (!isNecessary) {
-                    foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
-                    {
-                        if (pushProcessor.QueueCount() > 0)
+                        if (pushProcessor.QueueCount() > 0 || pushProcessor.IsRunning)
                         {
                             isNecessary = true;
                             break;
                         }
                     }
                 }
-                if (!isNecessary)
-                {
-                    for (byte i = 0; i < this.inboundPushProcessors.Count; i++)
+                //if (!isNecessary)
+                //{
+                //    for (byte i = 0; i < this.outboundPushProcessors.Count; i++)
+                //    {
+                //        this.outboundPushProcessors[i].Stop();
+                //    }
+                //}
+                if (!isNecessary) {
+                    if (this.inboundPushProcessors != null && this.inboundPushProcessors.Count > 0)
                     {
-                        this.inboundPushProcessors[i].Stop();
+                        foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
+                        {
+                            if (pushProcessor.QueueCount() > 0)
+                            {
+                                isNecessary = true;
+                                break;
+                            }
+                        }
                     }
                 }
-                return isNecessary ? true : ((DateTime.Now.ToUnixTimeStamp() - this.lastProcessedTimeOutbound) > SharedClass.MaxInactivity ? true : false);
+                //if (!isNecessary)
+                //{
+                //    for (byte i = 0; i < this.inboundPushProcessors.Count; i++)
+                //    {
+                //        this.inboundPushProcessors[i].Stop();
+                //    }
+                //}
+                return isNecessary ? true : ((DateTime.Now.ToUnixTimeStamp() - this.lastProcessedTimeOutbound) > SharedClass.MaxInactivity ? false : true);
             }
         }
         #endregion

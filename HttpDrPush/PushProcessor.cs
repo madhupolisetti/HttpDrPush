@@ -70,17 +70,27 @@ namespace HttpDrPush
         public void Start()
         {
             SharedClass.Logger.Info("Started");
+            byte successCount = 0;
+            byte errorCount = 0;
+            byte sleepCount = 0;
             this.accountProcessor.IncreaseConcurrency(direction);
             PushRequest pushRequest = new PushRequest();
             while (this.shouldIRun)
             {
                 if (this.QueueCount() > 0)
                 {
+                    pushRequest = null;
                     pushRequest = this.DeQueue();
                     if (pushRequest != null)
                     {
+                        if (successCount >= 100)
+                            successCount = 0;
+                        sleepCount = 0;
+                        ++successCount;
                         isIamRunning = true;
-                        OutboundPush(ref pushRequest);                        
+                        OutboundPush(ref pushRequest);
+                        if (!pushRequest.IsSuccess)
+                            SharedClass.Logger.Error("Push Failed => PushId : " + pushRequest.Id.ToString() + ", AttemptsMade : " + pushRequest.AttemptsMade + ", LastStatusCode : " + pushRequest.ResponseStatusCode.ToString());
                         this.accountProcessor.UpdatePushRequest(pushRequest, direction);
                         if (direction == Direction.OUTBOUND)
                             this.accountProcessor.LastProcessedTimeOutbound = DateTime.Now.ToUnixTimeStamp();
@@ -89,8 +99,24 @@ namespace HttpDrPush
                         isIamRunning = false;
                     }
                 }
-                else                
-                    Thread.Sleep(2000);                
+                else
+                {
+                    Thread.Sleep(2000);
+                    ++sleepCount;
+                }
+                if (sleepCount == 10)
+                {
+                    SharedClass.Logger.Info("Not DeQueued anything since 10 iterations");
+                }
+                if (successCount == 60)
+                {
+                    SharedClass.Logger.Info("Processed 60 Pushes");
+                }
+                if (errorCount == 10)
+                {
+                    SharedClass.Logger.Info("Error Count : 10");
+                    errorCount = 0;
+                }
             }
             SharedClass.Logger.Info("Dead");
             this.accountProcessor.DecreaseConcurrency(direction);
@@ -104,7 +130,7 @@ namespace HttpDrPush
                 this.accountProcessor.AddPendingRequest(this.DeQueue(), direction);
         }
         private void OutboundPush(ref PushRequest pushRequest)
-        {
+        {   
             HttpWebRequest request = null;
             HttpWebResponse response = null;
             string payload = string.Empty;
@@ -129,7 +155,7 @@ namespace HttpDrPush
                     switch (this.accountProcessor.OutboundConfig.DataFormat)
                     {
                         case DataFormat.JSON:
-                            request.ContentType = "application/xml";
+                            request.ContentType = "application/json";
                             break;
                         case DataFormat.XML:
                             request.ContentType = "application/xml";
@@ -148,7 +174,7 @@ namespace HttpDrPush
                             break;
                         case HttpMethod.POST:
                             request.Method = HttpMethod.POST.ToString();
-                            streamWriter = new StreamWriter(request.GetRequestStream());
+                            streamWriter = new StreamWriter(request.GetRequestStream());                            
                             streamWriter.Write(payload);
                             streamWriter.Flush();
                             streamWriter.Close();
@@ -160,16 +186,14 @@ namespace HttpDrPush
                 }
                 catch (WebException e)
                 {
-                    pushRequest.ResponseStatusCode = GetNumericStatusCode(((HttpWebResponse)e.Response).StatusCode);
-                    ++pushRequest.AttemptsMade;
-                    if (this.accountProcessor.OutboundConfig.RetryStrategy == 1)
-                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000);
-                    else
-                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000 * pushRequest.AttemptsMade);
+                    SharedClass.Logger.Error("WebException : PushId " + pushRequest.Id.ToString() + ", Url : " + this.accountProcessor.OutboundConfig.Url + ", Method :  " + this.accountProcessor.OutboundConfig.HttpMethod.ToString() + ", AttemptsMade : " + pushRequest.AttemptsMade + ", Payload : " + payload + ", Reason " + e.ToString());
+                    if(e.Response != null)
+                        pushRequest.ResponseStatusCode = GetNumericStatusCode(((HttpWebResponse)e.Response).StatusCode);
+                    ++pushRequest.AttemptsMade;                    
                 }
                 catch (Exception e)
                 {
-                    SharedClass.Logger.Error("Error Pushing PushId " + pushRequest.Id + ", Reason : " + e.ToString());
+                    SharedClass.Logger.Error("Exception : PushId " + pushRequest.Id.ToString() + ", Url : " + this.accountProcessor.OutboundConfig.Url + ", Method :  " + this.accountProcessor.OutboundConfig.HttpMethod.ToString() + ", AttemptsMade : " + pushRequest.AttemptsMade + ", Payload : " + payload + ", Reason " + e.ToString());
                     ++pushRequest.AttemptsMade;
                 }
                 finally
@@ -179,6 +203,13 @@ namespace HttpDrPush
                     request = null;
                     response = null;
                     pushRequest.TimeTaken = DateTime.Now.ToUnixTimeStamp() - startTime;
+                }
+                if (!pushRequest.IsSuccess && pushRequest.AttemptsMade < this.accountProcessor.OutboundConfig.MaxFailedAttempts)
+                {   
+                    if (this.accountProcessor.OutboundConfig.RetryStrategy == 1)
+                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000);
+                    else
+                        Thread.Sleep(this.accountProcessor.OutboundConfig.RetryDelayInSeconds * 1000 * pushRequest.AttemptsMade);
                 }
             }
             pushRequest.IsSuccess = isPushSuccess;            
@@ -212,6 +243,7 @@ namespace HttpDrPush
                     Thread.Sleep(10);
                 }
                 pushRequest = this.pushRequestsQueue.Dequeue();
+                SharedClass.Logger.Info("DeQueued PushId : " + pushRequest.Id.ToString() + " From Queue");
             }
             catch (Exception e)
             {
@@ -245,93 +277,96 @@ namespace HttpDrPush
             return queueCount;
         }
         private string GetPayload(PushRequest pushRequest)
-        {
-            string payload = string.Empty;
-            switch (this.accountProcessor.OutboundConfig.DataFormat)
+        {   
+            string payload = string.Empty;                        
+            try
+            {   
+                switch (this.accountProcessor.OutboundConfig.DataFormat)
+                {       
+                    case DataFormat.JSON:
+                        jObj.RemoveAll();
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.UUIDParameterName, pushRequest.UUID));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName, pushRequest.SmsStatusCode));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusParameterName, ""));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName));
+                        jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost));
+                        if (this.accountProcessor.OutboundConfig.IsSmsObjectAsArray)
+                        {   
+                            jArray.RemoveAll();
+                            jArray.Add(jObj);
+                            jObj = new JObject(new JProperty(this.accountProcessor.OutboundConfig.RootElementName, jArray));
+                        }
+                        else
+                        {
+                            jObj = new JObject(new JProperty(this.accountProcessor.OutboundConfig.RootElementName, jObj));
+                        }
+                        payload = jObj.ToString();
+                        break;
+                    case DataFormat.XML:
+                        if (this.accountProcessor.OutboundConfig.IsSmsPropertiesAsAttributes)
+                        {
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber);
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.UUIDParameterName, pushRequest.UUID);
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName, pushRequest.SmsStatusCode.ToString());
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusParameterName, "");
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime.ToString());
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName);
+                            rootElement.SetAttribute(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost.ToString());
+                        }
+                        else
+                        {
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.MobileNumberParameterName);
+                            childElement.InnerText = pushRequest.MobileNumber;
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.UUIDParameterName);
+                            childElement.InnerText = pushRequest.UUID;
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName);
+                            childElement.InnerText = pushRequest.SmsStatusCode.ToString();
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusParameterName);
+                            childElement.InnerText = "";
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName);
+                            childElement.InnerText = pushRequest.SmsStatusTime.ToString();
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SenderNameParameterName);
+                            childElement.InnerText = pushRequest.SenderName;
+                            rootElement.AppendChild(childElement);
+
+                            childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.CostParameterName);
+                            childElement.InnerText = pushRequest.Cost.ToString();
+                            rootElement.AppendChild(childElement);
+                        }
+                        payload = xmlDoc.InnerXml;
+                        break;
+                    case DataFormat.PLAIN:
+                        payload = this.accountProcessor.OutboundConfig.MobileNumberParameterName + "=" + pushRequest.MobileNumber;
+                        payload += "&" + this.accountProcessor.OutboundConfig.UUIDParameterName + "=" + pushRequest.UUID;
+                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName + "=" + pushRequest.SmsStatusCode;
+                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusParameterName + "=";
+                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName + "=" + pushRequest.SmsStatusTime.ToString();
+                        payload += "&" + this.accountProcessor.OutboundConfig.SenderNameParameterName + "=" + pushRequest.SenderName;
+                        payload += "&" + this.accountProcessor.OutboundConfig.CostParameterName + "=" + pushRequest.Cost.ToString();
+                        //if (this.accountProcessor.OutboundConfig.HttpMethod == HttpMethod.POST)
+                        //    request.ContentType = "application/x-www-form-urlencoded";
+                        break;
+                    default:
+                        break;
+                }
+            }
+            catch (Exception e)
             {
-                case DataFormat.JSON:
-                    jObj.RemoveAll();
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.UUIDParameterName, pushRequest.UUID));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName, pushRequest.SmsStatusCode));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusParameterName, ""));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName));
-                    jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost));
-                    if (this.accountProcessor.OutboundConfig.IsSmsObjectAsArray)
-                    {
-                        jArray.RemoveAll();
-                        jArray.Add(jObj);
-                        jObj = new JObject(new JProperty(this.accountProcessor.OutboundConfig.RootElementName, jArray));
-                    }
-                    else
-                    {
-                        jObj = new JObject(new JProperty(this.accountProcessor.OutboundConfig.RootElementName, jObj));
-                    }
-                    payload = jObj.ToString();                    
-                    break;
-                case DataFormat.XML:
-                    if (this.accountProcessor.OutboundConfig.IsSmsPropertiesAsAttributes)
-                    {
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber);
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.UUIDParameterName, pushRequest.UUID);
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName, pushRequest.SmsStatusCode.ToString());
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusParameterName, "");
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime.ToString());
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName);
-                        rootElement.SetAttribute(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost.ToString());
-                    }
-                    else
-                    {
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.MobileNumberParameterName);
-                        childElement.InnerText = pushRequest.MobileNumber;
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.UUIDParameterName);
-                        childElement.InnerText = pushRequest.UUID;
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName);
-                        childElement.InnerText = pushRequest.SmsStatusCode.ToString();
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusParameterName);
-                        childElement.InnerText = "";
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName);
-                        childElement.InnerText = pushRequest.SmsStatusTime.ToString();
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.SenderNameParameterName);
-                        childElement.InnerText = pushRequest.SenderName;
-                        rootElement.AppendChild(childElement);
-
-                        childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.CostParameterName);
-                        childElement.InnerText = pushRequest.Cost.ToString();
-                        rootElement.AppendChild(childElement);
-                    }
-                    payload = xmlDoc.InnerXml;                    
-                    break;
-                case DataFormat.PLAIN:
-                    payload = this.accountProcessor.OutboundConfig.MobileNumberParameterName + "=" + pushRequest.MobileNumber;
-                    payload += "&" + this.accountProcessor.OutboundConfig.UUIDParameterName + "=" + pushRequest.UUID;
-                    payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName + "=" + pushRequest.SmsStatusCode;
-                    payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusParameterName + "=";
-                    payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName + "=" + pushRequest.SmsStatusTime.ToString();
-                    payload += "&" + this.accountProcessor.OutboundConfig.SenderNameParameterName + "=" + pushRequest.SenderName;
-                    payload += "&" + this.accountProcessor.OutboundConfig.CostParameterName + "=" + pushRequest.Cost.ToString();
-                    //if (this.accountProcessor.OutboundConfig.HttpMethod == HttpMethod.POST)
-                    //    request.ContentType = "application/x-www-form-urlencoded";
-                    break;
-                default:
-                    break;
+                SharedClass.Logger.Error("Error Generating Payload, Reason : " + e.ToString());
             }
             return payload;
-        }
-        private void Update()
-        { 
-
         }
         private int GetNumericStatusCode(HttpStatusCode statusCode)
         {
@@ -471,6 +506,7 @@ namespace HttpDrPush
         }
         #region PROPERTIES
         public byte Id { get { return id; } set { id = value; } }
+        public bool IsRunning { get { return isIamRunning; } }
         #endregion
     }
 }

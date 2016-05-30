@@ -24,6 +24,9 @@ namespace HttpDrPush
             System.Threading.Thread pollThread = new System.Threading.Thread(new System.Threading.ThreadStart(StartDbPoll));
             pollThread.Name = "DbPoller";
             pollThread.Start();
+            System.Threading.Thread houseKeepingThread = new System.Threading.Thread(new System.Threading.ThreadStart(SharedClass.HouseKeeping));
+            houseKeepingThread.Name = "HouseKeeping";
+            houseKeepingThread.Start();
         }
         public void Stop()
         {   
@@ -61,10 +64,12 @@ namespace HttpDrPush
                     {
                         if (ds.Tables[0].Rows.Count > 0)
                         {
-                            AccountProcessor accountProcessor = null;
-                            PushRequest pushRequest = new PushRequest();
+                            AccountProcessor accountProcessor = null;                            
                             foreach (DataRow row in ds.Tables[0].Rows)
                             {
+                                try
+                                { 
+                                    PushRequest pushRequest = new PushRequest();
                                 this.lastDrId = Convert.ToInt32(row["Id"]);
                                 pushRequest.Id = Convert.ToInt64(row["Id"]);
                                 accountId = Convert.ToInt32(row["AccountId"]);
@@ -82,21 +87,30 @@ namespace HttpDrPush
                                 }
                                 pushRequest.MobileNumber = row["MobileNumber"].ToString();
                                 pushRequest.UUID = row["UUID"].ToString();
-                                pushRequest.Text = row["Text"].ToString();
+                                if(!row["Text"].IsDBNull())
+                                    pushRequest.Text = row["Text"].ToString();
                                 pushRequest.SmsStatusCode = Convert.ToByte(row["SmsStateCode"]);
                                 pushRequest.SmsStatusTime = DateTime.Parse(row["SmsStateTime"].ToString()).ToUnixTimeStamp();
-                                pushRequest.SenderName = row["SenderName"].ToString();
-                                pushRequest.Cost = float.Parse(row["Cost"].ToString());
+                                if (!row["SenderName"].IsDBNull())
+                                    pushRequest.SenderName = row["SenderName"].ToString();                                
+                                if (!row["Cost"].IsDBNull())
+                                    pushRequest.Cost = float.Parse(row["Cost"].ToString());
+
                                 pushRequest.AttemptsMade = Convert.ToByte(row["AttemptsMade"]);
                                 SharedClass.GetAccountProcessor(accountId, out accountProcessor);
                                 if (accountProcessor == null)
                                 {
                                     accountProcessor = new AccountProcessor(accountId);
+                                    System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
+                                    accountProcessorThread.Name = "Account_" + accountId.ToString();
+                                    accountProcessorThread.Start();
                                 }
                                 accountProcessor.EnQueue(pushRequest, direction);
-                                System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
-                                accountProcessorThread.Name = "Account_" + accountId.ToString();
-                                accountProcessorThread.Start();
+                                }
+                                catch (Exception e)
+                                {
+                                    SharedClass.Logger.Error("Exception While Parsing PushRequest In ApplicationPoller, Reason : " + e.ToString());
+                                }                                
                             }
                         }
                     }
@@ -111,23 +125,7 @@ namespace HttpDrPush
                     System.Threading.Thread.Sleep(5000);
                 }
             }
-        }
-        //private void HouseKeeping()
-        //{
-        //    while (!SharedClass.HasStopSignal)
-        //    {   
-        //        if (SharedClass.ActiveAccountProcessorsCount > 0)
-        //        {
-        //            AccountProcessor accountProcessor = null;                    
-        //            for (int i = 0; i < SharedClass.ActiveAccountProcessorsCount; i++)
-        //            {
-        //                if (!accountProcessor.IsNecessary)
-        //                    accountProcessor.Stop();
-        //            }
-        //        }
-        //        System.Threading.Thread.Sleep(SharedClass.HouseKeepingThreadSleepTime * 1000);
-        //    }
-        //}
+        }        
         private void DeserializePendingRequests()
         {
             try
@@ -142,6 +140,7 @@ namespace HttpDrPush
                     stream.Close();
                     if (pendingPushRequests != null && pendingPushRequests.Count > 0)
                     {
+                        SharedClass.Logger.Info("DeSerializing " + pendingPushRequests.Count.ToString() + " AcocuntPendingRequests");
                         while (pendingPushRequests.Count > 0)
                         {
                             apr = pendingPushRequests.First();

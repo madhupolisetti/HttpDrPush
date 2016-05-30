@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace HttpDrPush
 {
+    [Serializable]
     public class PushRequest
     {
         private long id = 0;

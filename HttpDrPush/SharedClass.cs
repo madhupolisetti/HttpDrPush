@@ -16,8 +16,8 @@ namespace HttpDrPush
         private static Dictionary<int, AccountProcessor> activeAccountProcessors = new Dictionary<int, AccountProcessor>();
         private static System.Threading.Mutex activeAccountsMutex = new System.Threading.Mutex();
         private static string connectionString = null;
-        private static int houseKeepingThreadSleepTime = 60;
-        private static int maxInactivity = 60;
+        private static int houseKeepingThreadSleepTime = 10;
+        private static int maxInactivity = 10;
         
         private static List<AccountPendingRequests> pendingPushRequests = null;
         public static void InitiaLizeLogger()
@@ -107,6 +107,27 @@ namespace HttpDrPush
                 accountProcessor.Value.Stop();
             }
         }
+        public static void HouseKeeping()
+        {
+            logger.Info("Started");
+            while (!hasStopSignal)
+            {
+                if (ActiveAccountProcessorsCount > 0)
+                {   
+                    foreach (KeyValuePair<int, AccountProcessor> accountProcesser in activeAccountProcessors)
+                    {
+                        if (!accountProcesser.Value.IsNecessary)
+                        {
+                            logger.Info("AccountProcessor " + accountProcesser.Key.ToString() + " Is Not Necessary. Stopping It.");
+                            System.Threading.Thread  accountProcessorStopThread = new System.Threading.Thread(new System.Threading.ThreadStart(accountProcesser.Value.Stop));
+                            accountProcessorStopThread.Name = "Account_" + accountProcesser.Key.ToString() + "_HouseKeep";
+                            accountProcessorStopThread.Start();
+                        }
+                    }
+                }
+                System.Threading.Thread.Sleep(houseKeepingThreadSleepTime);
+            }
+        }
         public static long CurrentTimeStamp()
         {
             return Convert.ToInt64((DateTime.Now - new DateTime(1970, 1, 1)).TotalMilliseconds);
@@ -115,6 +136,7 @@ namespace HttpDrPush
         {
             if (pendingPushRequests != null && pendingPushRequests.Count > 0)
             {
+                logger.Info("Serializing " + pendingPushRequests.Count.ToString() + " Account Pending Requests");
                 try
                 {
                     System.Runtime.Serialization.Formatters.Binary.BinaryFormatter formatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
