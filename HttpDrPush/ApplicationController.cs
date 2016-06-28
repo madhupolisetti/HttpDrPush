@@ -11,8 +11,8 @@ namespace HttpDrPush
 {
     class ApplicationController
     {
-        private bool isIamPolling = false;
-        private long lastDrId = 0;
+        private bool _isIamPolling = false;
+        private long _lastDrId = 0;
         public ApplicationController()
         {
             this.LoadConfig();
@@ -30,7 +30,7 @@ namespace HttpDrPush
         }
         public void Stop()
         {   
-            while (this.isIamPolling)
+            while (this._isIamPolling)
                 System.Threading.Thread.Sleep(100);
             SharedClass.StopActiveAccountProcessors();
             while (SharedClass.ActiveAccountProcessorsCount > 0)
@@ -55,9 +55,9 @@ namespace HttpDrPush
             {
                 try
                 {
-                    isIamPolling = true;
+                    _isIamPolling = true;
                     sqlCmd.Parameters.Clear();
-                    sqlCmd.Parameters.Add("@LastId", SqlDbType.BigInt).Value = this.lastDrId;
+                    sqlCmd.Parameters.Add("@LastId", SqlDbType.BigInt).Value = this._lastDrId;
                     da = new SqlDataAdapter(sqlCmd);                    
                     da.Fill(ds = new DataSet());
                     if (ds.Tables.Count > 0)
@@ -68,44 +68,45 @@ namespace HttpDrPush
                             foreach (DataRow row in ds.Tables[0].Rows)
                             {
                                 try
-                                { 
+                                {
                                     PushRequest pushRequest = new PushRequest();
-                                this.lastDrId = Convert.ToInt32(row["Id"]);
-                                pushRequest.Id = Convert.ToInt64(row["Id"]);
-                                accountId = Convert.ToInt32(row["AccountId"]);
-                                switch (Convert.ToByte(row["ServiceId"]))
-                                {
-                                    case 1:
-                                        direction = Direction.INBOUND;
-                                        break;
-                                    case 2:
-                                        direction = Direction.OUTBOUND;
-                                        break;
-                                    default:
-                                        direction = Direction.OUTBOUND;
-                                        break;
-                                }
-                                pushRequest.MobileNumber = row["MobileNumber"].ToString();
-                                pushRequest.UUID = row["UUID"].ToString();
-                                if(!row["Text"].IsDBNull())
-                                    pushRequest.Text = row["Text"].ToString();
-                                pushRequest.SmsStatusCode = Convert.ToByte(row["SmsStateCode"]);
-                                pushRequest.SmsStatusTime = DateTime.Parse(row["SmsStateTime"].ToString()).ToUnixTimeStamp();
-                                if (!row["SenderName"].IsDBNull())
-                                    pushRequest.SenderName = row["SenderName"].ToString();                                
-                                if (!row["Cost"].IsDBNull())
-                                    pushRequest.Cost = float.Parse(row["Cost"].ToString());
+                                    pushRequest.Id = Convert.ToInt64(row["Id"]);
+                                    this._lastDrId = pushRequest.Id;
+                                    pushRequest.Url = row["Url"].ToString();                                    
+                                    accountId = Convert.ToInt32(row["AccountId"]);
+                                    switch (Convert.ToByte(row["ServiceId"]))
+                                    {
+                                        case 1:
+                                            direction = Direction.INBOUND;
+                                            break;
+                                        case 2:
+                                            direction = Direction.OUTBOUND;
+                                            break;
+                                        default:
+                                            direction = Direction.OUTBOUND;
+                                            break;
+                                    }
+                                    pushRequest.MobileNumber = row["MobileNumber"].ToString();
+                                    pushRequest.UUID = row["UUID"].ToString();
+                                    if (!row["Text"].IsDBNull())
+                                        pushRequest.Text = row["Text"].ToString();
+                                    pushRequest.SmsStatusCode = Convert.ToByte(row["SmsStateCode"]);
+                                    pushRequest.SmsStatusTime = DateTime.Parse(row["SmsStateTime"].ToString()).ToUnixTimeStamp();
+                                    if (!row["SenderName"].IsDBNull())
+                                        pushRequest.SenderName = row["SenderName"].ToString();
+                                    if (!row["Cost"].IsDBNull())
+                                        pushRequest.Cost = float.Parse(row["Cost"].ToString());
 
-                                pushRequest.AttemptsMade = Convert.ToByte(row["AttemptsMade"]);
-                                SharedClass.GetAccountProcessor(accountId, out accountProcessor);
-                                if (accountProcessor == null)
-                                {
-                                    accountProcessor = new AccountProcessor(accountId);
-                                    System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
-                                    accountProcessorThread.Name = "Account_" + accountId.ToString();
-                                    accountProcessorThread.Start();
-                                }
-                                accountProcessor.EnQueue(pushRequest, direction);
+                                    pushRequest.AttemptsMade = Convert.ToByte(row["AttemptsMade"]);
+                                    SharedClass.GetAccountProcessor(accountId, out accountProcessor);
+                                    if (accountProcessor == null)
+                                    {
+                                        accountProcessor = new AccountProcessor(accountId);
+                                        System.Threading.Thread accountProcessorThread = new System.Threading.Thread(accountProcessor.Start);
+                                        accountProcessorThread.Name = "Account_" + accountId.ToString();
+                                        accountProcessorThread.Start();
+                                    }
+                                    accountProcessor.EnQueue(pushRequest, direction);
                                 }
                                 catch (Exception e)
                                 {
@@ -121,7 +122,7 @@ namespace HttpDrPush
                 }
                 finally
                 {
-                    this.isIamPolling = false;
+                    this._isIamPolling = false;
                     System.Threading.Thread.Sleep(5000);
                 }
             }

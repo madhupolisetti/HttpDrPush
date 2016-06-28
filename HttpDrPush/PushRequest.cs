@@ -9,18 +9,22 @@ namespace HttpDrPush
     [Serializable]
     public class PushRequest
     {
-        private long id = 0;
-        private string mobileNumber = string.Empty;
-        private string uuid = string.Empty;
-        private string text = string.Empty;
-        private byte smsStatusCode = 0;
-        private long smsStatusTime = 0;
-        private string senderName = string.Empty;
-        private float cost = 0;
-        private byte attemptsMade = 0;
-        private int responseStatusCode = 0;
-        private int timeTaken = 0;
-        private bool isSuccess = false;
+        #region PRIVATE_VARIABLES
+        private long _id = 0;
+        private string _mobileNumber = string.Empty;
+        private string _uuid = string.Empty;
+        private string _text = string.Empty;
+        private byte _smsStatusCode = 0;
+        private long _smsStatusTime = 0;
+        private string _senderName = string.Empty;
+        private float _cost = 0;
+        private byte _attemptsMade = 0;
+        private int _responseStatusCode = 0;
+        private int _timeTaken = 0;
+        private bool _isSuccess = false;
+        private string _url = string.Empty;
+        private Dictionary<string, string> _extraParameters = null;
+        #endregion        
         public void ReEnQueue()
         {
             System.Data.SqlClient.SqlConnection sqlCon = null;
@@ -29,14 +33,14 @@ namespace HttpDrPush
             {
                 sqlCon = new System.Data.SqlClient.SqlConnection(SharedClass.ConnectionString);
                 sqlCmd = new System.Data.SqlClient.SqlCommand("DR_ReEnQueue_PushRequest", sqlCon);
-                sqlCmd.Parameters.Add("@Id", System.Data.SqlDbType.BigInt).Value = this.id;
-                sqlCmd.Parameters.Add("@AttemptsMade", System.Data.SqlDbType.TinyInt).Value = this.attemptsMade;
+                sqlCmd.Parameters.Add("@Id", System.Data.SqlDbType.BigInt).Value = this._id;
+                sqlCmd.Parameters.Add("@AttemptsMade", System.Data.SqlDbType.TinyInt).Value = this._attemptsMade;
                 sqlCon.Open();
                 sqlCmd.ExecuteNonQuery();
             }
             catch (Exception e)
             {
-                SharedClass.Logger.Error("Error ReEnQueuing PushRequest Id : " + this.id + ", Reason : " + e.ToString());
+                SharedClass.Logger.Error("Error ReEnQueuing PushRequest Id : " + this._id + ", Reason : " + e.ToString());
             }
             finally
             {
@@ -50,18 +54,169 @@ namespace HttpDrPush
         }
 
         #region "PROPERTIES"
-        public long Id { get { return id; } set { id = value; } }
-        public string MobileNumber { get { return mobileNumber; } set { mobileNumber = value; } }
-        public string UUID { get { return uuid; } set { uuid = value; } }
-        public string Text { get { return text; } set { text = value; } }
-        public byte SmsStatusCode { get { return smsStatusCode; } set { smsStatusCode = value; } }
-        public long SmsStatusTime { get { return smsStatusTime; } set { smsStatusTime = value; } }
-        public string SenderName { get { return senderName; } set { senderName = value; } }
-        public float Cost { get { return cost; } set { cost = value; } }
-        public byte AttemptsMade { get { return attemptsMade; } set { attemptsMade = value; } }
-        public int ResponseStatusCode { get { return responseStatusCode; } set { responseStatusCode = value; } }
-        public int TimeTaken { get { return timeTaken; } set { timeTaken = value; } }
-        public bool IsSuccess { get { return isSuccess; } set { isSuccess = value; } }
+        public long Id { 
+            get 
+            { 
+                return _id; 
+            } 
+            set 
+            { 
+                _id = value; 
+            } 
+        }
+        public string Url 
+        {
+            get
+            {
+                if(this._url.Contains("?"))
+                {
+                    foreach(string paramandvalue in this._url.Split('&'))
+                    {
+                        this.ExtraParameters.Add(paramandvalue.Split('=').First(), paramandvalue.Split('=').Last());
+                    }
+                    this._url = this._url.Substring(0, this._url.IndexOf("?"));
+                }
+                return this._url;
+            }
+            set
+            {
+                this._url = value;
+            }
+        }
+        public string MobileNumber 
+        { 
+            get 
+            { 
+                return _mobileNumber; 
+            } 
+            set 
+            { 
+                _mobileNumber = value; 
+            } 
+        }
+        public string UUID 
+        { 
+            get 
+            { 
+                return _uuid; 
+            } 
+            set 
+            { 
+                _uuid = value; 
+            } 
+        }
+        public string Text 
+        { 
+            get 
+            { 
+                return _text; 
+            } 
+            set 
+            { 
+                _text = value; 
+            } 
+        }
+        public byte SmsStatusCode 
+        { 
+            get 
+            { 
+                return _smsStatusCode; 
+            } 
+            set 
+            { 
+                _smsStatusCode = value; 
+            } 
+        }
+        public long SmsStatusTime 
+        { 
+            get 
+            { 
+                return _smsStatusTime; 
+            } 
+            set 
+            { 
+                _smsStatusTime = value; 
+            } 
+        }
+        public string SenderName 
+        { 
+            get 
+            { 
+                return _senderName; 
+            } 
+            set 
+            { 
+                _senderName = value; 
+            } 
+        }
+        public float Cost 
+        { 
+            get 
+            { 
+                return _cost; 
+            } 
+            set 
+            { 
+                _cost = value; 
+            } 
+        }
+        public byte AttemptsMade 
+        { 
+            get 
+            { 
+                return _attemptsMade; 
+            } 
+            set 
+            { 
+                _attemptsMade = value; 
+            } 
+        }
+        public int ResponseStatusCode 
+        { 
+            get 
+            { 
+                return _responseStatusCode; 
+            } 
+            set 
+            { 
+                _responseStatusCode = value; 
+            } 
+        }
+        public int TimeTaken 
+        { 
+            get 
+            { 
+                return _timeTaken; 
+            } 
+            set 
+            { 
+                _timeTaken = value; 
+            } 
+        }
+        public bool IsSuccess 
+        { 
+            get 
+            { 
+                return _isSuccess; 
+            } 
+            set 
+            { 
+                _isSuccess = value; 
+            } 
+        }
+        public Dictionary<string, string> ExtraParameters
+        {
+            get
+            {
+                if (this._extraParameters == null)
+                    this._extraParameters = new Dictionary<string, string>();
+                return this._extraParameters;
+            }
+            set
+            {
+                this._extraParameters = value;
+            }
+        }
         #endregion
     }
 }

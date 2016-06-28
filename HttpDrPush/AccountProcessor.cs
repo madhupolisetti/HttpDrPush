@@ -12,123 +12,124 @@ namespace HttpDrPush
 {
     public class AccountProcessor
     {
-        private int accountId = 0;
-        //private short accountType = 1;
-        private Queue<PushRequest> outboundPushRequestsQueue = new Queue<PushRequest>();
-        private Queue<PushRequest> inboundPushRequestsQueue = new Queue<PushRequest>();
-        private List<PushProcessor> outboundPushProcessors = null;
-        private List<PushProcessor> inboundPushProcessors = null;
-        private Mutex concurrencyMutex = new Mutex();        
-        private OutboundConfig outboundConfig = null;
-        private InboundConfig inboundConfig = null;
-        private byte lastProcessorIndexOutbound = 0;
-        private byte lastProcessorIndexInbound = 0;
-        private long lastProcessedTimeOutbound = 0;
-        private long lastProcessedTimeInbound = 0;
-        private AccountPendingRequests accountPendingRequests = null;
+        #region PRIVATE_VARIABLES
+        private int _accountId = 0;
+        private Queue<PushRequest> _outboundPushRequestsQueue = new Queue<PushRequest>();
+        private Queue<PushRequest> _inboundPushRequestsQueue = new Queue<PushRequest>();
+        private List<PushProcessor> _outboundPushProcessors = null;
+        private List<PushProcessor> _inboundPushProcessors = null;
+        private Mutex _concurrencyMutex = new Mutex();
+        private OutboundConfig _outboundConfig = null;
+        private InboundConfig _inboundConfig = null;
+        private byte _lastProcessorIndexOutbound = 0;
+        private byte _lastProcessorIndexInbound = 0;
+        private long _lastProcessedTimeOutbound = 0;
+        private long _lastProcessedTimeInbound = 0;
+        private AccountPendingRequests _accountPendingRequests = null;
 
-        private SqlConnection sqlCon = null;
-        private SqlCommand configSqlCmd = null;
-        private SqlCommand updateSqlCmd = null;
-        public AccountProcessor(int id) {
-            this.accountId = id;
-            sqlCon = new SqlConnection(SharedClass.ConnectionString);
-            updateSqlCmd = new SqlCommand("DR_Update_PushRequest", sqlCon);
-            updateSqlCmd.CommandType = CommandType.StoredProcedure;
+        private SqlConnection _sqlCon = null;
+        private SqlCommand _configSqlCmd = null;
+        private SqlCommand _updateSqlCmd = null;
+        #endregion        
+        public AccountProcessor(int accountId) {
+            this._accountId = accountId;
+            _sqlCon = new SqlConnection(SharedClass.ConnectionString);
+            _updateSqlCmd = new SqlCommand("DR_Update_PushRequest", _sqlCon);
+            _updateSqlCmd.CommandType = CommandType.StoredProcedure;
             this.SetConfig();
         }
         public void IncreaseConcurrency(Direction direction)
         {
-            while (!this.concurrencyMutex.WaitOne())
+            while (!this._concurrencyMutex.WaitOne())
                 Thread.Sleep(10);
             switch (direction)
             { 
                 case Direction.OUTBOUND:
-                    ++this.outboundConfig.CurrentConnections;
+                    ++this._outboundConfig.CurrentConnections;
                     break;
                 case Direction.INBOUND:
-                    ++this.inboundConfig.CurrentConnections;
+                    ++this._inboundConfig.CurrentConnections;
                     break;
                 default:
                     break;
             }
-            this.concurrencyMutex.ReleaseMutex();
+            this._concurrencyMutex.ReleaseMutex();
         }
         public void DecreaseConcurrency(Direction direction)
         {
-            while (!this.concurrencyMutex.WaitOne())
+            while (!this._concurrencyMutex.WaitOne())
                 Thread.Sleep(10);
             switch (direction)
             {
                 case Direction.OUTBOUND:
-                    --this.outboundConfig.CurrentConnections;
+                    --this._outboundConfig.CurrentConnections;
                     break;
                 case Direction.INBOUND:
-                    --this.inboundConfig.CurrentConnections;
+                    --this._inboundConfig.CurrentConnections;
                     break;
                 default:
                     break;
             }
-            this.concurrencyMutex.ReleaseMutex();
+            this._concurrencyMutex.ReleaseMutex();
         }
         public void AddPendingRequest( PushRequest pushRequest, Direction direction)
         {   
-            if (accountPendingRequests == null)
+            if (_accountPendingRequests == null)
             {
-                accountPendingRequests = new AccountPendingRequests();
-                accountPendingRequests.AccountId = this.accountId;
+                _accountPendingRequests = new AccountPendingRequests();
+                _accountPendingRequests.AccountId = this._accountId;
             }
-            lock (accountPendingRequests)
+            lock (_accountPendingRequests)
             {
                 if (direction == Direction.OUTBOUND)
-                    accountPendingRequests.OutboundRequests.Add(pushRequest);
+                    _accountPendingRequests.OutboundRequests.Add(pushRequest);
                 else
-                    accountPendingRequests.InboundRequests.Add(pushRequest);
+                    _accountPendingRequests.InboundRequests.Add(pushRequest);
             }
         }
         public void Start()
         {   
             SharedClass.Logger.Info("Started");
-            this.lastProcessedTimeInbound = DateTime.Now.ToUnixTimeStamp();
-            this.lastProcessedTimeOutbound = DateTime.Now.ToUnixTimeStamp();
-            SharedClass.AddAccountProcessor(this.accountId, this);            
+            this._lastProcessedTimeInbound = DateTime.Now.ToUnixTimeStamp();
+            this._lastProcessedTimeOutbound = DateTime.Now.ToUnixTimeStamp();
+            SharedClass.AddAccountProcessor(this._accountId, this);            
         }
         public void Stop()
         {   
-            SharedClass.Logger.Info("Stopping AccountId : " + this.accountId + " Processor");
-            if (this.outboundPushProcessors != null)
+            SharedClass.Logger.Info("Stopping AccountId : " + this._accountId + " Processor");
+            if (this._outboundPushProcessors != null)
             {
-                for (byte i = 0; i < this.outboundPushProcessors.Count; i++)
+                for (byte i = 0; i < this._outboundPushProcessors.Count; i++)
                 {
-                    this.outboundPushProcessors[i].Stop();
+                    this._outboundPushProcessors[i].Stop();
                 }
             }
-            if (this.inboundPushProcessors != null)
+            if (this._inboundPushProcessors != null)
             {
-                for (byte i = 0; i < this.inboundPushProcessors.Count; i++)
+                for (byte i = 0; i < this._inboundPushProcessors.Count; i++)
                 {
-                    this.inboundPushProcessors[i].Stop();
+                    this._inboundPushProcessors[i].Stop();
                 }
             }
-            if (this.outboundConfig != null)
+            if (this._outboundConfig != null)
             {
-                while (this.outboundConfig.CurrentConnections > 0)
-                {
-                    System.Threading.Thread.Sleep(2000);
-                    SharedClass.Logger.Info("Still " + this.outboundConfig.CurrentConnections + " Active Outbound PushProcessors");
-                }
-            }
-            if (this.inboundConfig != null)
-            {
-                while (this.inboundConfig.CurrentConnections > 0)
+                while (this._outboundConfig.CurrentConnections > 0)
                 {
                     System.Threading.Thread.Sleep(2000);
-                    SharedClass.Logger.Info("Still " + this.inboundConfig.CurrentConnections + " Active Inbound PushProcessors");
+                    SharedClass.Logger.Info("Still " + this._outboundConfig.CurrentConnections + " Active Outbound PushProcessors");
                 }
             }
-            if (accountPendingRequests != null)
-                SharedClass.AddAccountPendingRequests(accountPendingRequests);
-            SharedClass.ReleaseAccountProcessor(this.accountId);
+            if (this._inboundConfig != null)
+            {
+                while (this._inboundConfig.CurrentConnections > 0)
+                {
+                    System.Threading.Thread.Sleep(2000);
+                    SharedClass.Logger.Info("Still " + this._inboundConfig.CurrentConnections + " Active Inbound PushProcessors");
+                }
+            }
+            if (_accountPendingRequests != null)
+                SharedClass.AddAccountPendingRequests(_accountPendingRequests);
+            SharedClass.ReleaseAccountProcessor(this._accountId);
         }        
         public void EnQueue(PushRequest pushRequest, Direction direction)
         {
@@ -136,28 +137,28 @@ namespace HttpDrPush
             switch (direction)
             { 
                 case Direction.OUTBOUND:
-                    if (this.outboundConfig == null)
+                    if (this._outboundConfig == null)
                     {
-                        throw new InvalidOperationException("Outbound Config not set for account " + this.accountId.ToString());                        
+                        throw new InvalidOperationException("Outbound Config not set for account " + this._accountId.ToString());                        
                     }
-                    if (this.outboundPushProcessors == null || this.outboundPushProcessors.Count == 0)
+                    if (this._outboundPushProcessors == null || this._outboundPushProcessors.Count == 0)
                         InitPushProcessors(direction);
-                    if (lastProcessorIndexOutbound >= this.outboundPushProcessors.Count)
-                        lastProcessorIndexOutbound = 0;
-                    this.outboundPushProcessors[lastProcessorIndexOutbound].EnQueue(pushRequest);
-                    ++lastProcessorIndexOutbound;
+                    if (_lastProcessorIndexOutbound >= this._outboundPushProcessors.Count)
+                        _lastProcessorIndexOutbound = 0;
+                    this._outboundPushProcessors[_lastProcessorIndexOutbound].EnQueue(pushRequest);
+                    ++_lastProcessorIndexOutbound;
                     break;
                 case Direction.INBOUND:
-                    if (this.inboundConfig == null)
+                    if (this._inboundConfig == null)
                     {
-                        throw new InvalidOperationException("Inbound Config not set for account " + this.accountId.ToString());
+                        throw new InvalidOperationException("Inbound Config not set for account " + this._accountId.ToString());
                     }
-                    if (this.inboundPushProcessors == null && this.inboundPushProcessors.Count == 0)
+                    if (this._inboundPushProcessors == null && this._inboundPushProcessors.Count == 0)
                         InitPushProcessors(direction);
-                    if (lastProcessorIndexInbound >= this.inboundPushProcessors.Count)
-                        lastProcessorIndexInbound = 0;
-                    this.inboundPushProcessors[lastProcessorIndexInbound].EnQueue(pushRequest);
-                    ++lastProcessorIndexInbound;
+                    if (_lastProcessorIndexInbound >= this._inboundPushProcessors.Count)
+                        _lastProcessorIndexInbound = 0;
+                    this._inboundPushProcessors[_lastProcessorIndexInbound].EnQueue(pushRequest);
+                    ++_lastProcessorIndexInbound;
                     break;
                 default:
                     break;
@@ -167,14 +168,14 @@ namespace HttpDrPush
         {
             try
             {
-                updateSqlCmd.Parameters.Clear();
-                updateSqlCmd.Parameters.Add("@PushId", SqlDbType.BigInt).Value = pushRequest.Id;
-                updateSqlCmd.Parameters.Add("@AttemptsMade", SqlDbType.TinyInt).Value = pushRequest.AttemptsMade;
-                updateSqlCmd.Parameters.Add("@TimeTaken", SqlDbType.Int).Value = pushRequest.TimeTaken;
-                updateSqlCmd.Parameters.Add("@ResponseStatusCode", SqlDbType.Int).Value = pushRequest.ResponseStatusCode;
-                if (sqlCon.State != ConnectionState.Open)
-                    sqlCon.Open();
-                updateSqlCmd.ExecuteNonQuery();
+                _updateSqlCmd.Parameters.Clear();
+                _updateSqlCmd.Parameters.Add("@PushId", SqlDbType.BigInt).Value = pushRequest.Id;
+                _updateSqlCmd.Parameters.Add("@AttemptsMade", SqlDbType.TinyInt).Value = pushRequest.AttemptsMade;
+                _updateSqlCmd.Parameters.Add("@TimeTaken", SqlDbType.Int).Value = pushRequest.TimeTaken;
+                _updateSqlCmd.Parameters.Add("@ResponseStatusCode", SqlDbType.Int).Value = pushRequest.ResponseStatusCode;
+                if (_sqlCon.State != ConnectionState.Open)
+                    _sqlCon.Open();
+                _updateSqlCmd.ExecuteNonQuery();
             }
             catch (Exception e)
             {
@@ -187,17 +188,16 @@ namespace HttpDrPush
             DataSet ds = null;
             try
             {   
-                configSqlCmd = new SqlCommand("DR_Get_AccountHttpPushConfig", sqlCon);
-                configSqlCmd.CommandType = CommandType.StoredProcedure;
-                configSqlCmd.Parameters.Add("@AccountId", SqlDbType.Int).Value = this.accountId;
-                da = new SqlDataAdapter(configSqlCmd);
+                _configSqlCmd = new SqlCommand("DR_Get_AccountHttpPushConfig", _sqlCon);
+                _configSqlCmd.CommandType = CommandType.StoredProcedure;
+                _configSqlCmd.Parameters.Add("@AccountId", SqlDbType.Int).Value = this._accountId;
+                da = new SqlDataAdapter(_configSqlCmd);
                 da.Fill(ds = new DataSet());
-                
+
                 if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
                     this.SetOutboundConfig(ds.Tables[0].Rows[0]);
-
-                //if (ds.Tables.Count > 1 && ds.Tables[1].Rows.Count > 0)
-                //    this.SetOutboundConfig(ds.Tables[1].Rows[0]);
+                else
+                    this.SetOutboundConfig(null);
             }
             catch (Exception e)
             {
@@ -206,198 +206,231 @@ namespace HttpDrPush
         }
         private void SetOutboundConfig(DataRow outboundConfigRecord)
         {   
-            //foreach (DataColumn column in outboundConfigRecord.Table.Columns)
-            //{
-            //    if (outboundConfigRecord[column.ColumnName].IsDBNull())
-            //        SharedClass.Logger.Info(column.ColumnName + " : NULL");
-            //    else
-            //        SharedClass.Logger.Info(column.ColumnName + " : " + outboundConfigRecord[column.ColumnName]);
-            //}
-            this.outboundConfig = new OutboundConfig();
-            //this.outboundPushProcessors = new List<PushProcessor>();
-            this.outboundConfig.Url = outboundConfigRecord["Url"].ToString();
-            switch (Convert.ToByte(outboundConfigRecord["HttpMethod"]))
+            this._outboundConfig = new OutboundConfig();
+            this._outboundConfig.HttpMethod = HttpMethod.POST;
+            if (outboundConfigRecord != null)
             {
-                case 1:
-                    this.outboundConfig.HttpMethod = HttpMethod.POST;
-                    break;
-                case 2:
-                    this.outboundConfig.HttpMethod = HttpMethod.GET;
-                    break;
-                default:
-                    break;
-            }
-            if (!outboundConfigRecord["MaxFailedAttempts"].IsDBNull())
-            {   
-                this.outboundConfig.MaxFailedAttempts = Convert.ToByte(outboundConfigRecord["MaxFailedAttempts"]);
-            }
-            if (!outboundConfigRecord["RetryDelayInSeconds"].IsDBNull())
-            {
-                this.outboundConfig.RetryDelayInSeconds = Convert.ToSByte(outboundConfigRecord["RetryDelayInSeconds"]);
-            }
-            if (!outboundConfigRecord["RetryStrategy"].IsDBNull())
-            {
-                this.outboundConfig.RetryStrategy = Convert.ToByte(outboundConfigRecord["RetryStrategy"]);
-            }
-            if (!outboundConfigRecord["ConcurrentConnections"].IsDBNull())
-            {
-                this.outboundConfig.ConcurrentConnections = Convert.ToByte(outboundConfigRecord["ConcurrentConnections"]);                
-            }
-            InitPushProcessors(Direction.OUTBOUND);
-            if (!outboundConfigRecord["UUIDParameterName"].IsDBNull())
-            {
-                this.outboundConfig.UUIDParameterName = outboundConfigRecord["UUIDParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["MobileNumberParameterName"].IsDBNull())
-            {
-                this.outboundConfig.MobileNumberParameterName = outboundConfigRecord["MobileNumberParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["SmsStatusParameterName"].IsDBNull())
-            {
-                this.outboundConfig.SmsStatusParameterName = outboundConfigRecord["SmsStatusParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["SmsStatusCodeParameterName"].IsDBNull())
-            {
-                this.outboundConfig.SmsStatusCodeParameterName = outboundConfigRecord["SmsStatusCodeParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["SmsStatusTimeParameterName"].IsDBNull())
-            {
-                this.outboundConfig.SmsStatusTimeParameterName = outboundConfigRecord["SmsStatusTimeParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["TextParameterName"].IsDBNull())
-            {
-                this.outboundConfig.TextParameterName = outboundConfigRecord["TextParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["SenderNameParameterName"].IsDBNull())
-            {
-                this.outboundConfig.SenderNameParameterName = outboundConfigRecord["SenderNameParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["CostParameterName"].IsDBNull())
-            {
-                this.outboundConfig.CostParameterName = outboundConfigRecord["CostParameterName"].ToString();
-            }
-            if (!outboundConfigRecord["RequestHeaders"].IsDBNull())
-            {
-                // HeaderName1:HeaderValue1_@_HeaderName2:HeaderValue2_@_HeaderName3:HeaderValue3
-                foreach (string header in outboundConfigRecord["RequestHeaders"].ToString().Split(new string[] { "_@_" }, StringSplitOptions.RemoveEmptyEntries))
+                if (!outboundConfigRecord["Url"].IsDBNull() && outboundConfigRecord["Url"].ToString() != string.Empty)
+                    this._outboundConfig.Url = outboundConfigRecord["Url"].ToString();
+                switch (Convert.ToByte(outboundConfigRecord["HttpMethod"]))
                 {
-                    this.outboundConfig.RequestHeaders.Add(header.Split(new char[] { ':' }).First().ReplaceWhiteSpaces(), header.Split(new char[] { ':' }).Last().ReplaceWhiteSpaces());
-                }
-
-            }
-            if (!outboundConfigRecord["DataFormat"].IsDBNull())
-            {
-                switch (Convert.ToByte(outboundConfigRecord["DataFormat"]))
-                {
+                    case 1:
+                        this._outboundConfig.HttpMethod = HttpMethod.POST;
+                        break;
                     case 2:
-                        this.outboundConfig.DataFormat = DataFormat.XML;
+                        this._outboundConfig.HttpMethod = HttpMethod.GET;
                         break;
-                    case 3:
-                        this.OutboundConfig.DataFormat = DataFormat.PLAIN;
-                            break;
                     default:
-                        this.outboundConfig.DataFormat = DataFormat.JSON;
                         break;
                 }
-            }
-            if (!outboundConfigRecord["RootElementName"].IsDBNull())
-            {
-                this.outboundConfig.RootElementName = outboundConfigRecord["RootElementName"].ToString();
-            }
+                if (!outboundConfigRecord["MaxFailedAttempts"].IsDBNull())
+                {
+                    byte tempValue = this._outboundConfig.MaxFailedAttempts;
+                    byte.TryParse(outboundConfigRecord["MaxFailedAttemts"].ToString(), out tempValue);
+                    this._outboundConfig.MaxFailedAttempts = tempValue;
+                }
+                if (!outboundConfigRecord["RetryDelayInSeconds"].IsDBNull())
+                {
+                    byte tempValue = this._outboundConfig.RetryDelayInSeconds;
+                    byte.TryParse(outboundConfigRecord["RetryDelayInSeconds"].ToString(), out tempValue);
+                    this._outboundConfig.RetryDelayInSeconds = tempValue;
+                }
+                if (!outboundConfigRecord["RetryStrategy"].IsDBNull())
+                {
+                    byte tempValue = this._outboundConfig.RetryStrategy;
+                    byte.TryParse(outboundConfigRecord["RetryStrategy"].ToString(), out tempValue);
+                    this._outboundConfig.RetryStrategy = tempValue;
+                }
+                if (!outboundConfigRecord["ConcurrentConnections"].IsDBNull())
+                {
+                    byte tempValue = this._outboundConfig.ConcurrentConnections;
+                    byte.TryParse(outboundConfigRecord["ConcurrentConnections"].ToString(), out tempValue);
+                    this._outboundConfig.ConcurrentConnections = tempValue;
+                }
+                if (!outboundConfigRecord["UUIDParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.UUIDParameterName = outboundConfigRecord["UUIDParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["MobileNumberParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.MobileNumberParameterName = outboundConfigRecord["MobileNumberParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["SmsStatusParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.SmsStatusParameterName = outboundConfigRecord["SmsStatusParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["SmsStatusCodeParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.SmsStatusCodeParameterName = outboundConfigRecord["SmsStatusCodeParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["SmsStatusTimeParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.SmsStatusTimeParameterName = outboundConfigRecord["SmsStatusTimeParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["TextParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.TextParameterName = outboundConfigRecord["TextParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["SenderNameParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.SenderNameParameterName = outboundConfigRecord["SenderNameParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["CostParameterName"].IsDBNull())
+                {
+                    this._outboundConfig.CostParameterName = outboundConfigRecord["CostParameterName"].ToString();
+                }
+                if (!outboundConfigRecord["RequestHeaders"].IsDBNull())
+                {
+                    // HeaderName1:HeaderValue1_@_HeaderName2:HeaderValue2_@_HeaderName3:HeaderValue3
+                    foreach (string header in outboundConfigRecord["RequestHeaders"].ToString().Split(new string[] { "_@_" }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        this._outboundConfig.RequestHeaders.Add(header.Split(new char[] { ':' }).First().ReplaceWhiteSpaces(), header.Split(new char[] { ':' }).Last().ReplaceWhiteSpaces());
+                    }
+
+                }
+                if (!outboundConfigRecord["DataFormat"].IsDBNull())
+                {
+                    switch (Convert.ToByte(outboundConfigRecord["DataFormat"]))
+                    {
+                        case 2:
+                            this._outboundConfig.DataFormat = DataFormat.XML;
+                            break;
+                        case 3:
+                            this.OutboundConfig.DataFormat = DataFormat.PLAIN;
+                            break;
+                        default:
+                            this._outboundConfig.DataFormat = DataFormat.JSON;
+                            break;
+                    }
+                }
+                if (!outboundConfigRecord["RootElementName"].IsDBNull())
+                {
+                    this._outboundConfig.RootElementName = outboundConfigRecord["RootElementName"].ToString();
+                }
+            }            
+            InitPushProcessors(Direction.OUTBOUND);            
         }
         private void InitPushProcessors(Direction direction)
         {
-            SharedClass.Logger.Info("Initializing Processors. AccountId : " + this.accountId.ToString() + ", Direction : " + direction.ToString());
+            SharedClass.Logger.Info("Initializing Processors. AccountId : " + this._accountId.ToString() + ", Direction : " + direction.ToString());
             switch (direction)
             {
                 case Direction.OUTBOUND:
-                    this.outboundPushProcessors = new List<PushProcessor>();
-                    for (byte i = 1; i <= this.outboundConfig.ConcurrentConnections; i++)
+                    this._outboundPushProcessors = new List<PushProcessor>();
+                    for (byte i = 1; i <= this._outboundConfig.ConcurrentConnections; i++)
                     {
-                        this.outboundPushProcessors.Add(new PushProcessor(i, direction, this));
+                        this._outboundPushProcessors.Add(new PushProcessor(i, direction, this));
                     }
-                    this.lastProcessorIndexOutbound = 0;
+                    this._lastProcessorIndexOutbound = 0;
                     break;
                 case Direction.INBOUND:
-                    this.inboundPushProcessors = new List<PushProcessor>();
-                    for (byte i = 1; i <= this.inboundConfig.ConcurrentConnections; i++)
+                    this._inboundPushProcessors = new List<PushProcessor>();
+                    for (byte i = 1; i <= this._inboundConfig.ConcurrentConnections; i++)
                     {
-                        this.inboundPushProcessors.Add(new PushProcessor(i, direction, this));
+                        this._inboundPushProcessors.Add(new PushProcessor(i, direction, this));
                     }
-                    this.lastProcessorIndexInbound = 0;
+                    this._lastProcessorIndexInbound = 0;
                     break;
                 default:
                     break;
             }
-            if (this.outboundPushProcessors != null && this.outboundPushProcessors.Count > 0)
+            if (this._outboundPushProcessors != null && this._outboundPushProcessors.Count > 0)
             {
-                foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
+                foreach (PushProcessor pushProcessor in this._outboundPushProcessors)
                 {
                     Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
-                    pushThread.Name = "Account_" + this.accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_O";
+                    pushThread.Name = "Account_" + this._accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_O";
                     pushThread.Start();
                 }
             }
-            if (this.inboundPushProcessors != null && this.inboundPushProcessors.Count > 0)
+            if (this._inboundPushProcessors != null && this._inboundPushProcessors.Count > 0)
             {
-                foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
+                foreach (PushProcessor pushProcessor in this._inboundPushProcessors)
                 {
                     Thread pushThread = new Thread(new ThreadStart(pushProcessor.Start));
-                    pushThread.Name = "Account_" + this.accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_I";
+                    pushThread.Name = "Account_" + this._accountId.ToString() + "_Push_" + pushProcessor.Id.ToString() + "_I";
                     pushThread.Start();
                 }
             }
         }
         #region PROPERTIES
-        public int AccountId { get { return accountId; } }
-        public long LastProcessedTimeInbound { get { return this.lastProcessorIndexInbound; } set { this.lastProcessedTimeInbound = value; } }
-        public long LastProcessedTimeOutbound { get { return this.lastProcessorIndexOutbound; } set { this.lastProcessedTimeOutbound = value; } }
-        public OutboundConfig OutboundConfig { get { return outboundConfig; } }
-        public InboundConfig InboundConfig { get { return inboundConfig; } }
+        public int AccountId 
+        { 
+            get 
+            { 
+                return this._accountId; 
+            } 
+        }
+        public long LastProcessedTimeInbound 
+        { 
+            get 
+            { 
+                return this._lastProcessorIndexInbound;
+            } 
+            set 
+            { 
+                this._lastProcessedTimeInbound = value; 
+            } 
+        }
+        public long LastProcessedTimeOutbound 
+        { 
+            get 
+            { 
+                return this._lastProcessorIndexOutbound; 
+            } 
+            set 
+            { 
+                this._lastProcessedTimeOutbound = value; 
+            } 
+        }
+        public OutboundConfig OutboundConfig 
+        { 
+            get 
+            {
+                return this._outboundConfig;
+            }
+        }
+        public InboundConfig InboundConfig 
+        { 
+            get 
+            {
+                return this._inboundConfig;
+            }
+        }
         public bool IsNecessary
         {
             get
             {
-                bool isNecessary = false;
-                if (this.outboundPushProcessors != null && this.outboundPushProcessors.Count > 0)
+                bool necessary = false;
+                if (this._outboundPushProcessors != null && this._outboundPushProcessors.Count > 0)
                 {
-                    foreach (PushProcessor pushProcessor in this.outboundPushProcessors)
+                    foreach (PushProcessor pushProcessor in this._outboundPushProcessors)
                     {
                         if (pushProcessor.QueueCount() > 0 || pushProcessor.IsRunning)
                         {
-                            isNecessary = true;
+                            necessary = true;
                             break;
                         }
                     }
-                }
-                //if (!isNecessary)
-                //{
-                //    for (byte i = 0; i < this.outboundPushProcessors.Count; i++)
-                //    {
-                //        this.outboundPushProcessors[i].Stop();
-                //    }
-                //}
-                if (!isNecessary) {
-                    if (this.inboundPushProcessors != null && this.inboundPushProcessors.Count > 0)
+                }                
+                if (!necessary) {
+                    if (this._inboundPushProcessors != null && this._inboundPushProcessors.Count > 0)
                     {
-                        foreach (PushProcessor pushProcessor in this.inboundPushProcessors)
+                        foreach (PushProcessor pushProcessor in this._inboundPushProcessors)
                         {
-                            if (pushProcessor.QueueCount() > 0)
+                            if (pushProcessor.QueueCount() > 0 || pushProcessor.IsRunning)
                             {
-                                isNecessary = true;
+                                necessary = true;
                                 break;
                             }
                         }
                     }
                 }
-                //if (!isNecessary)
-                //{
-                //    for (byte i = 0; i < this.inboundPushProcessors.Count; i++)
-                //    {
-                //        this.inboundPushProcessors[i].Stop();
-                //    }
-                //}
-                return isNecessary ? true : ((DateTime.Now.ToUnixTimeStamp() - this.lastProcessedTimeOutbound) > SharedClass.MaxInactivity ? false : true);
+                if (!necessary)
+                    necessary = (DateTime.Now.ToUnixTimeStamp() - this._lastProcessedTimeOutbound) < SharedClass.MaxInactivity;
+                if (!necessary)
+                    necessary = (DateTime.Now.ToUnixTimeStamp() - this._lastProcessedTimeInbound) < SharedClass.MaxInactivity;                
+                return necessary;
             }
         }
         #endregion

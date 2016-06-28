@@ -133,8 +133,7 @@ namespace HttpDrPush
         {   
             HttpWebRequest request = null;
             HttpWebResponse response = null;
-            string payload = string.Empty;
-            //StreamReader streamReader = null;
+            string payload = string.Empty;            
             StreamWriter streamWriter = null;
             int startTime = System.DateTime.Now.ToUnixTimeStamp();
             bool isPushSuccess = false;
@@ -142,8 +141,11 @@ namespace HttpDrPush
             while (!isPushSuccess && pushRequest.AttemptsMade < this.accountProcessor.OutboundConfig.MaxFailedAttempts && this.shouldIRun)
             {
                 try
-                {
-                    request = WebRequest.Create(this.accountProcessor.OutboundConfig.Url) as HttpWebRequest;
+                {   
+                    if(this.accountProcessor.OutboundConfig.HttpMethod == HttpMethod.GET)
+                        request = WebRequest.Create(pushRequest.Url + "?" + payload) as HttpWebRequest;
+                    else
+                        request = WebRequest.Create(pushRequest.Url) as HttpWebRequest;
                     if (this.accountProcessor.OutboundConfig.RequestHeaders.Count > 0)
                     {
                         foreach (KeyValuePair<string, string> header in this.accountProcessor.OutboundConfig.RequestHeaders)
@@ -151,7 +153,7 @@ namespace HttpDrPush
                             request.Headers.Add(header.Key, header.Value);
                         }
                     }
-                    request.UserAgent = "Smsc DR Publisher";
+                    request.UserAgent = "Smsc DR Publisher - O";
                     switch (this.accountProcessor.OutboundConfig.DataFormat)
                     {
                         case DataFormat.JSON:
@@ -292,6 +294,34 @@ namespace HttpDrPush
                         jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime));
                         jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName));
                         jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost));
+                        if (pushRequest.ExtraParameters.Count > 0)
+                        {
+                            foreach (KeyValuePair<string, string> paramandvalue in pushRequest.ExtraParameters)
+                            {
+                                try
+                                {
+                                    jObj.Add(new JProperty(paramandvalue.Key, paramandvalue.Value));
+                                }
+                                catch (System.ArgumentException e)
+                                {
+
+                                }
+                            }   
+                        }
+                        if (this.accountProcessor.OutboundConfig.ExtraParameters.Count > 0)
+                        {
+                            foreach (KeyValuePair<string, string> paramandvalue in this.accountProcessor.OutboundConfig.ExtraParameters)
+                            {
+                                try
+                                {
+                                    jObj.Add(new JProperty(paramandvalue.Key, paramandvalue.Value));
+                                }
+                                catch (System.ArgumentException e)
+                                {
+
+                                }
+                            }   
+                        }
                         if (this.accountProcessor.OutboundConfig.IsSmsObjectAsArray)
                         {   
                             jArray.RemoveAll();
@@ -305,6 +335,8 @@ namespace HttpDrPush
                         payload = jObj.ToString();
                         break;
                     case DataFormat.XML:
+                        rootElement.RemoveAll();
+                        rootElement.RemoveAllAttributes();
                         if (this.accountProcessor.OutboundConfig.IsSmsPropertiesAsAttributes)
                         {
                             rootElement.SetAttribute(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber);
@@ -314,6 +346,14 @@ namespace HttpDrPush
                             rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName, pushRequest.SmsStatusTime.ToString());
                             rootElement.SetAttribute(this.accountProcessor.OutboundConfig.SenderNameParameterName, pushRequest.SenderName);
                             rootElement.SetAttribute(this.accountProcessor.OutboundConfig.CostParameterName, pushRequest.Cost.ToString());
+                            if (pushRequest.ExtraParameters.Count > 0)
+                            {
+                                foreach (KeyValuePair<string, string> paramandvalue in pushRequest.ExtraParameters)
+                                    rootElement.SetAttribute(paramandvalue.Key, paramandvalue.Value);
+                            }
+                            if (this.accountProcessor.OutboundConfig.ExtraParameters.Count > 0)
+                                foreach (KeyValuePair<string, string> paramandvalue in this.accountProcessor.OutboundConfig.ExtraParameters)
+                                    rootElement.SetAttribute(paramandvalue.Key, paramandvalue.Value);
                         }
                         else
                         {
@@ -344,19 +384,41 @@ namespace HttpDrPush
                             childElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.CostParameterName);
                             childElement.InnerText = pushRequest.Cost.ToString();
                             rootElement.AppendChild(childElement);
+                            if(pushRequest.ExtraParameters.Count > 0)
+                            { 
+                                foreach (KeyValuePair<string, string> paramandvalue in pushRequest.ExtraParameters)
+                                {
+                                    childElement = xmlDoc.CreateElement(paramandvalue.Key);
+                                    childElement.InnerText = paramandvalue.Value;
+                                    rootElement.AppendChild(childElement);
+                                }
+                            }
+                            if (this.accountProcessor.OutboundConfig.ExtraParameters.Count > 0)
+                            {
+                                foreach (KeyValuePair<string, string> paramandvalue in this.accountProcessor.OutboundConfig.ExtraParameters)
+                                {
+                                    childElement = xmlDoc.CreateElement(paramandvalue.Key);
+                                    childElement.InnerText = paramandvalue.Value;
+                                    rootElement.AppendChild(childElement);
+                                }
+                            }
                         }
                         payload = xmlDoc.InnerXml;
                         break;
                     case DataFormat.PLAIN:
-                        payload = this.accountProcessor.OutboundConfig.MobileNumberParameterName + "=" + pushRequest.MobileNumber;
-                        payload += "&" + this.accountProcessor.OutboundConfig.UUIDParameterName + "=" + pushRequest.UUID;
-                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName + "=" + pushRequest.SmsStatusCode;
+                        payload = this.accountProcessor.OutboundConfig.MobileNumberParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.MobileNumber);
+                        payload += "&" + this.accountProcessor.OutboundConfig.UUIDParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.UUID);
+                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.SmsStatusCode.ToString());
                         payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusParameterName + "=";
-                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName + "=" + pushRequest.SmsStatusTime.ToString();
-                        payload += "&" + this.accountProcessor.OutboundConfig.SenderNameParameterName + "=" + pushRequest.SenderName;
-                        payload += "&" + this.accountProcessor.OutboundConfig.CostParameterName + "=" + pushRequest.Cost.ToString();
-                        //if (this.accountProcessor.OutboundConfig.HttpMethod == HttpMethod.POST)
-                        //    request.ContentType = "application/x-www-form-urlencoded";
+                        payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusTimeParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.SmsStatusTime.ToString());
+                        payload += "&" + this.accountProcessor.OutboundConfig.SenderNameParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.SenderName);
+                        payload += "&" + this.accountProcessor.OutboundConfig.CostParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.Cost.ToString());
+                        if (pushRequest.ExtraParameters.Count > 0)
+                            foreach (KeyValuePair<string, string> paramandvalue in pushRequest.ExtraParameters)
+                                payload += "&" + paramandvalue.Key + "=" + System.Web.HttpUtility.UrlEncode(paramandvalue.Value);
+                        if (this.accountProcessor.OutboundConfig.ExtraParameters.Count > 0)
+                            foreach (KeyValuePair<string, string> paramandvalue in this.accountProcessor.OutboundConfig.ExtraParameters)
+                                payload += "&" + paramandvalue.Key + "=" + System.Web.HttpUtility.UrlEncode(paramandvalue.Value);
                         break;
                     default:
                         break;
