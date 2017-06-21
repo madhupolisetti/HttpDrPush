@@ -11,7 +11,7 @@ namespace HttpDrPush
     //    public const short JSON = 1;
     //    public const short XML = 2;
     //}
-    public enum DataFormat
+    public enum PayloadFormat
     { 
         JSON = 1,
         XML = 2,

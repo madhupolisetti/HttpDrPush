@@ -26,7 +26,7 @@ namespace HttpDrPush
         private string _costParameterName = SharedClass.COST_PARAMETER_NAME;
         private Dictionary<string, string> _requestHeaders = null;
         private Dictionary<string, string> _extraParameters = null;
-        private DataFormat _dataFormat = DataFormat.JSON;
+        private PayloadFormat _dataFormat = PayloadFormat.JSON;
         private string _rootElementName = SharedClass.ROOT_ELEMENT_NAME;
         private bool _isSmsPropertiesAsAttributes = true;
         private bool _isSmsObjectAsArray = false;        
@@ -224,7 +224,7 @@ namespace HttpDrPush
                 this._extraParameters = value;
             }
         }
-        public DataFormat DataFormat 
+        public PayloadFormat DataFormat 
         { 
             get 
             { 

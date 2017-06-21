@@ -17,17 +17,17 @@ namespace HttpDrPush
         private static Dictionary<int, AccountProcessor> _activeAccountProcessors = new Dictionary<int, AccountProcessor>();
         private static System.Threading.Mutex _activeAccountsMutex = new System.Threading.Mutex();
         private static string _connectionString = null;
-        private static int _houseKeepingThreadSleepTime = 20;
-        private static int _maxInactivity = 30;
+        private static int _houseKeepingThreadSleepTimeInSeconds = 20;
+        private static int _maxInactivityInSeconds = 30;
 
-        private static List<AccountPendingRequests> _pendingPushRequests = null;
+        private static List<PendingPushRequests> _pendingPushRequests = null;
         #endregion
         #region READONLY_VARIABLES
         public static readonly byte MAX_FAILED_ATTEMPTS = GetApplicationKey("MaxFailedAttempts") == null ? Convert.ToByte(0) : Convert.ToByte(GetApplicationKey("MaxFailedAttempts"));
         public static readonly byte RETRY_DELAY_IN_SECONDS = GetApplicationKey("RetryDelayInSeconds") == null ? Convert.ToByte(10) : Convert.ToByte(GetApplicationKey("RetryDelayInSeconds"));
         public static readonly byte RETRY_STRATEGY = GetApplicationKey("RetryStrategy") == null ? Convert.ToByte(1) : Convert.ToByte(GetApplicationKey("RetryStrategy"));
         public static readonly byte CONCURRENT_CONNECTIONS = GetApplicationKey("ConcurrentConnections") == null ? Convert.ToByte(1) : Convert.ToByte(GetApplicationKey("ConcurrentConnections"));
-        public static readonly string UUID_PARAMETER_NAME = GetApplicationKey("UUIDParameterName") == null ? "UUID" : GetApplicationKey("UUIDParameterName");
+        public static readonly string UUID_PARAMETER_NAME = GetApplicationKey("UUIDParameterName") == null ? "MessageUUID" : GetApplicationKey("UUIDParameterName");
         public static readonly string MOBILE_NUMBER_PARAMETER_NAME = GetApplicationKey("MobileNumberParameterName") == null ? "Number" : GetApplicationKey("MobileNumberParameterName");
         public static readonly string STATUS_PARAMETER_NAME = GetApplicationKey("StatusParameterName") == null ? "Status" : GetApplicationKey("StatusParameterName");
         public static readonly string STATUS_CODE_PARAMETER_NAME = GetApplicationKey("StatusCodeParameterName") == null ? "StatusCode" : GetApplicationKey("StatusCodeParameterName");
@@ -147,7 +147,7 @@ namespace HttpDrPush
                         }
                     }
                 }
-                System.Threading.Thread.Sleep(_houseKeepingThreadSleepTime * 1000);
+                System.Threading.Thread.Sleep(_houseKeepingThreadSleepTimeInSeconds * 1000);
             }
         }
         public static long CurrentTimeStamp()
@@ -189,10 +189,10 @@ namespace HttpDrPush
                 return count;
             }
         }
-        public static void AddAccountPendingRequests(AccountPendingRequests apr)
+        public static void AddAccountPendingRequests(PendingPushRequests apr)
         {
             if (_pendingPushRequests == null)
-                _pendingPushRequests = new List<AccountPendingRequests>();
+                _pendingPushRequests = new List<PendingPushRequests>();
             lock (SharedClass._pendingPushRequests)
             {
                 SharedClass._pendingPushRequests.Add(apr);
@@ -207,8 +207,8 @@ namespace HttpDrPush
                 return _connectionString;
             }
         }
-        public static int HouseKeepingThreadSleepTime { get { return _houseKeepingThreadSleepTime; } set { _houseKeepingThreadSleepTime = value; } }
-        public static int MaxInactivity { get { return _maxInactivity; } set { _maxInactivity = value; } }
+        public static int HouseKeepingThreadSleepTime { get { return _houseKeepingThreadSleepTimeInSeconds; } set { _houseKeepingThreadSleepTimeInSeconds = value; } }
+        public static int MaxInactivity { get { return _maxInactivityInSeconds; } set { _maxInactivityInSeconds = value; } }
         public static string PendingQueueFileName { get { return "PendingQueue.ser"; } }
         #endregion
     }

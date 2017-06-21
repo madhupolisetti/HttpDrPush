@@ -18,7 +18,7 @@ namespace HttpDrPush
         private string mobileNumberParameterName = "Number";
         private string textParameterName = "Text";
         private Dictionary<string, string> requestHeaders = null;
-        private DataFormat dataFormat = DataFormat.JSON;
+        private PayloadFormat dataFormat = PayloadFormat.JSON;
         private string rootElementName = "Message";
         #region PROPERTIES
         public string Url { get { return url; } set { url = value; } }
@@ -31,7 +31,7 @@ namespace HttpDrPush
         public string MobileNumberParameterName { get { return mobileNumberParameterName; } set { mobileNumberParameterName = value; } }
         public string TextParameterName { get { return textParameterName; } set { textParameterName = value; } }
         public Dictionary<string, string> RequestHeaders { get { return requestHeaders; } set { requestHeaders = value; } }
-        public DataFormat DataFormat { get { return dataFormat; } set { dataFormat = value; } }
+        public PayloadFormat DataFormat { get { return dataFormat; } set { dataFormat = value; } }
         public string RootElementName { get { return rootElementName; } set { rootElementName = value; } }
         #endregion
     }

@@ -36,11 +36,11 @@ namespace HttpDrPush
                 case Direction.OUTBOUND:
                     switch (this.accountProcessor.OutboundConfig.DataFormat)
                     { 
-                        case DataFormat.XML:
+                        case PayloadFormat.XML:
                             this.xmlDoc = new XmlDocument();
                             this.rootElement = xmlDoc.CreateElement(this.accountProcessor.OutboundConfig.RootElementName);
                             break;
-                        case DataFormat.JSON:
+                        case PayloadFormat.JSON:
                             this.jObj = new JObject();
                             break;
                         default:
@@ -51,11 +51,11 @@ namespace HttpDrPush
                 case Direction.INBOUND:
                     switch (this.accountProcessor.InboundConfig.DataFormat)
                     { 
-                        case DataFormat.XML:
+                        case PayloadFormat.XML:
                             this.xmlDoc = new XmlDocument();
                             this.rootElement = xmlDoc.CreateElement(this.accountProcessor.InboundConfig.RootElementName);
                             break;
-                        case DataFormat.JSON:
+                        case PayloadFormat.JSON:
                             this.jObj = new JObject();
                             break;
                         default:
@@ -156,13 +156,13 @@ namespace HttpDrPush
                     request.UserAgent = "Smsc DR Publisher - O";
                     switch (this.accountProcessor.OutboundConfig.DataFormat)
                     {
-                        case DataFormat.JSON:
+                        case PayloadFormat.JSON:
                             request.ContentType = "application/json";
                             break;
-                        case DataFormat.XML:
+                        case PayloadFormat.XML:
                             request.ContentType = "application/xml";
                             break;
-                        case DataFormat.PLAIN:
+                        case PayloadFormat.PLAIN:
                             if (this.accountProcessor.OutboundConfig.HttpMethod == HttpMethod.POST)
                                 request.ContentType = "application/form-url-encoded";
                             break;
@@ -285,7 +285,7 @@ namespace HttpDrPush
             {   
                 switch (this.accountProcessor.OutboundConfig.DataFormat)
                 {       
-                    case DataFormat.JSON:
+                    case PayloadFormat.JSON:
                         jObj.RemoveAll();
                         jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.MobileNumberParameterName, pushRequest.MobileNumber));
                         jObj.Add(new JProperty(this.accountProcessor.OutboundConfig.UUIDParameterName, pushRequest.UUID));
@@ -334,7 +334,7 @@ namespace HttpDrPush
                         }
                         payload = jObj.ToString();
                         break;
-                    case DataFormat.XML:
+                    case PayloadFormat.XML:
                         rootElement.RemoveAll();
                         rootElement.RemoveAllAttributes();
                         if (this.accountProcessor.OutboundConfig.IsSmsPropertiesAsAttributes)
@@ -405,7 +405,7 @@ namespace HttpDrPush
                         }
                         payload = xmlDoc.InnerXml;
                         break;
-                    case DataFormat.PLAIN:
+                    case PayloadFormat.PLAIN:
                         payload = this.accountProcessor.OutboundConfig.MobileNumberParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.MobileNumber);
                         payload += "&" + this.accountProcessor.OutboundConfig.UUIDParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.UUID);
                         payload += "&" + this.accountProcessor.OutboundConfig.SmsStatusCodeParameterName + "=" + System.Web.HttpUtility.UrlEncode(pushRequest.SmsStatusCode.ToString());

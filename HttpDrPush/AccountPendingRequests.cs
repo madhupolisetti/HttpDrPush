@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace HttpDrPush
 {
     [Serializable]
-    public class AccountPendingRequests
+    public class PendingPushRequests
     {
         private int accountId = 0;
         private List<PushRequest> inboundRequests = new List<PushRequest>();

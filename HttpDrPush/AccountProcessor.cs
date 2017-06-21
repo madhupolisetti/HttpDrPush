@@ -25,7 +25,7 @@ namespace HttpDrPush
         private byte _lastProcessorIndexInbound = 0;
         private long _lastProcessedTimeOutbound = 0;
         private long _lastProcessedTimeInbound = 0;
-        private AccountPendingRequests _accountPendingRequests = null;
+        private PendingPushRequests _accountPendingRequests = null;
 
         private SqlConnection _sqlCon = null;
         private SqlCommand _configSqlCmd = null;
@@ -76,7 +76,7 @@ namespace HttpDrPush
         {   
             if (_accountPendingRequests == null)
             {
-                _accountPendingRequests = new AccountPendingRequests();
+                _accountPendingRequests = new PendingPushRequests();
                 _accountPendingRequests.AccountId = this._accountId;
             }
             lock (_accountPendingRequests)
@@ -293,13 +293,13 @@ namespace HttpDrPush
                     switch (Convert.ToByte(outboundConfigRecord["DataFormat"]))
                     {
                         case 2:
-                            this._outboundConfig.DataFormat = DataFormat.XML;
+                            this._outboundConfig.DataFormat = PayloadFormat.XML;
                             break;
                         case 3:
-                            this.OutboundConfig.DataFormat = DataFormat.PLAIN;
+                            this.OutboundConfig.DataFormat = PayloadFormat.PLAIN;
                             break;
                         default:
-                            this._outboundConfig.DataFormat = DataFormat.JSON;
+                            this._outboundConfig.DataFormat = PayloadFormat.JSON;
                             break;
                     }
                 }

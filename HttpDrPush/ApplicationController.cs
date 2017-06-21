@@ -135,9 +135,9 @@ namespace HttpDrPush
                 {
                     System.Runtime.Serialization.Formatters.Binary.BinaryFormatter formatter = new System.Runtime.Serialization.Formatters.Binary.BinaryFormatter();
                     System.IO.Stream stream = new System.IO.FileStream(SharedClass.PendingQueueFileName, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.Read);
-                    List<AccountPendingRequests> pendingPushRequests = null;
-                    AccountPendingRequests apr = new AccountPendingRequests();
-                    pendingPushRequests = formatter.Deserialize(stream) as List<AccountPendingRequests>;
+                    List<PendingPushRequests> pendingPushRequests = null;
+                    PendingPushRequests apr = new PendingPushRequests();
+                    pendingPushRequests = formatter.Deserialize(stream) as List<PendingPushRequests>;
                     stream.Close();
                     if (pendingPushRequests != null && pendingPushRequests.Count > 0)
                     {
